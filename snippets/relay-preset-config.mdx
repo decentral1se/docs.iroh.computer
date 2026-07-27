@@ -9,8 +9,8 @@ In Rust, add the `iroh-services` crate to your project:
 cargo add iroh-services
 ```
 
-The Python, Swift, and Kotlin bindings ship the preset as part of `iroh-ffi`,
-with no extra dependency needed.
+The Python, Swift, Kotlin, and JavaScript bindings ship the preset as part of
+`iroh-ffi`, with no extra dependency needed.
 
 <CodeGroup>
 
@@ -102,7 +102,29 @@ fun main() = runBlocking {
 }
 ```
 
+```javascript JavaScript
+import { Endpoint, presetIrohServices } from '@number0/iroh'
+
+// Apply a preset pointing at your dedicated relays, authenticated with your
+// project's API key. In production, load the key from a config file or
+// environment variable instead of hardcoding it.
+const builder = Endpoint.builder()
+presetIrohServices(builder, {
+  relays: ['YOUR_RELAY_URL_US', 'YOUR_RELAY_URL_EU'],
+  apiSecret: 'YOUR_API_KEY',
+})
+
+// Bind the endpoint, then wait until it's online to confirm it has an
+// authorized connection to a relay.
+const ep = await builder.bind()
+await ep.online()
+```
+
 </CodeGroup>
+
+In JavaScript, presets are functions applied to an `EndpointBuilder`, so use
+`Endpoint.builder()` rather than `Endpoint.bind()` — `bind()` always applies the
+n0 preset.
 
 <Note>
   Custom relay URLs are available on Pro and Enterprise projects, or if you self-host your own relay.
