@@ -105,13 +105,7 @@ fun main() = runBlocking {
 </CodeGroup>
 
 <Note>
-  Custom relay URLs are available on Pro and Enterprise projects. On a free project, use the n0 preset (`presets::N0`, `preset_n0()`) — in Rust you can also pass your API key to `iroh_services::preset()` without `relays(...)` to authenticate against the public relays and surface your relay traffic on the dashboard.
+  Custom relay URLs are available on Pro and Enterprise projects, or if you self-host your own relay.
 </Note>
 
-The access token is minted when you build the preset, and is scoped to the
-endpoint's key. Both are handled for you if you let the preset generate the key.
-To pin your endpoint's identity instead, pass your saved key to the preset —
-in the bindings that's `ServicesPresetOptions.secretKey`, not
-`EndpointOptions.secretKey`. Option fields are layered on top of the preset, so
-a key set there replaces the one the token is scoped to and the relays will
-reject the endpoint.
+On a free project, use the n0 preset (`presets::N0`, `preset_n0()`) — in Rust you can also pass your API key to `iroh_services::preset()` without `relays(...)` to authenticate against the public relays and surface your relay traffic on the dashboard.
