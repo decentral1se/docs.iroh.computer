@@ -1,17 +1,20 @@
-Your dedicated relays require authentication by default. Your endpoint
-authenticates to them with your project's API key. The `iroh_services::preset()` builder handles
-this for you: it mints a short-lived access token scoped to your endpoint's key
-and configures the endpoint to use your relays.
+Your dedicated relays require authentication. Your endpoint authenticates to
+them with your project's API key: the iroh-services preset mints a short-lived
+access token scoped to your endpoint's key and to relay use only, then
+configures the endpoint to use your relays.
 
-Add the `iroh-services` crate to your project:
+In Rust, add the `iroh-services` crate to your project:
 
 ```bash
 cargo add iroh-services
 ```
 
-Then build a preset and bind your endpoint with it:
+The Python, Swift, and Kotlin bindings ship the preset as part of `iroh-ffi`,
+with no extra dependency needed.
 
-```rust
+<CodeGroup>
+
+```rust Rust
 use iroh::Endpoint;
 
 #[tokio::main]
@@ -36,6 +39,79 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+```python Python
+import asyncio
+import iroh
+
+async def main():
+    # Build a preset pointing at your dedicated relays, authenticated with
+    # your project's API key. In production, load the key from a config file
+    # or environment variable instead of hardcoding it.
+    preset = iroh.preset_iroh_services(
+        iroh.ServicesPresetOptions(
+            relays=["YOUR_RELAY_URL_US", "YOUR_RELAY_URL_EU"],
+            api_secret="YOUR_API_KEY",
+        )
+    )
+
+    # Bind the endpoint with the preset, then wait until it's online to
+    # confirm it has an authorized connection to a relay.
+    ep = await iroh.Endpoint.bind(iroh.EndpointOptions(preset=preset))
+    await ep.online()
+
+asyncio.run(main())
+```
+
+```swift Swift
+import IrohLib
+
+// Build a preset pointing at your dedicated relays, authenticated with your
+// project's API key. In production, load the key from a config file or
+// environment variable instead of hardcoding it.
+let preset = try presetIrohServices(options: ServicesPresetOptions(
+    relays: ["YOUR_RELAY_URL_US", "YOUR_RELAY_URL_EU"],
+    apiSecret: "YOUR_API_KEY"
+))
+
+// Bind the endpoint with the preset, then wait until it's online to confirm
+// it has an authorized connection to a relay.
+let ep = try await Endpoint.bind(options: EndpointOptions(preset: preset))
+await ep.online()
+```
+
+```kotlin Kotlin
+import computer.iroh.*
+import kotlinx.coroutines.runBlocking
+
+fun main() = runBlocking {
+    // Build a preset pointing at your dedicated relays, authenticated with
+    // your project's API key. In production, load the key from a config file
+    // or environment variable instead of hardcoding it.
+    val preset = presetIrohServices(
+        ServicesPresetOptions(
+            relays = listOf("YOUR_RELAY_URL_US", "YOUR_RELAY_URL_EU"),
+            apiSecret = "YOUR_API_KEY",
+        ),
+    )
+
+    // Bind the endpoint with the preset, then wait until it's online to
+    // confirm it has an authorized connection to a relay.
+    val ep = Endpoint.bind(EndpointOptions(preset = preset))
+    ep.online()
+    ep.shutdown()
+}
+```
+
+</CodeGroup>
+
 <Note>
-  Custom relay URLs are available on Pro and Enterprise projects. On a free project, pass your API key to the preset without `relays(...)` to authenticate against the public relays and surface your relay traffic on the dashboard.
+  Custom relay URLs are available on Pro and Enterprise projects. On a free project, use the n0 preset (`presets::N0`, `preset_n0()`) — in Rust you can also pass your API key to `iroh_services::preset()` without `relays(...)` to authenticate against the public relays and surface your relay traffic on the dashboard.
 </Note>
+
+The access token is minted when you build the preset, and is scoped to the
+endpoint's key. Both are handled for you if you let the preset generate the key.
+To pin your endpoint's identity instead, pass your saved key to the preset —
+in the bindings that's `ServicesPresetOptions.secretKey`, not
+`EndpointOptions.secretKey`. Option fields are layered on top of the preset, so
+a key set there replaces the one the token is scoped to and the relays will
+reject the endpoint.
