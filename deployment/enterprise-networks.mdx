@@ -115,11 +115,7 @@ Allowing these lets devices connect directly instead of relaying everything.
 
 ### Hostnames to allow
 
-The list depends on which version of iroh the application is built with. Ask
-your developers, because the two sets are on **different domains** and a rule
-written for one will not match the other.
-
-**iroh 1.0 and later**, with the default configuration:
+With iroh's default configuration:
 
 ```
 use1-1.relay.n0.iroh.link
@@ -128,16 +124,6 @@ euc1-1.relay.n0.iroh.link
 aps1-1.relay.n0.iroh.link
 dns.iroh.link
 ```
-
-**Pre-1.0 versions of iroh** use `iroh.network` rather than `iroh.link`:
-
-```
-use1-1.relay.iroh.network
-euw1-1.relay.iroh.network
-aps1-1.relay.iroh.network
-```
-
-If you are not certain which version is in use, allow both lists.
 
 These servers are run by [n0](https://n0.computer), the company that builds
 iroh. If you run your own relay, this list becomes hostnames you control
