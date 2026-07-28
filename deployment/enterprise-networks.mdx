@@ -115,19 +115,31 @@ Allowing these lets devices connect directly instead of relaying everything.
 
 ### Hostnames to allow
 
-With iroh's default configuration:
+Which relay hostnames to allow depends on how the application is configured. Ask
+your developers, and expect one of three answers.
+
+**Relays you run yourself.** The hostnames are ones you already control, on your
+own network or in your own cloud account. See
+[Running your own relay](#running-your-own-relay).
+
+**Dedicated relays.** Servers provisioned for your project through Iroh Services
+and used by nobody else, on hostnames given to you when they are set up.
+
+**The shared public relays.** Run by [n0](https://n0.computer), the company that
+builds iroh, and shared with every other iroh developer worldwide. They are
+meant for development and testing rather than production, so treat this as a
+sign the application has not been configured yet. The defaults are:
 
 ```
 use1-1.relay.n0.iroh.link
 usw1-1.relay.n0.iroh.link
 euc1-1.relay.n0.iroh.link
 aps1-1.relay.n0.iroh.link
-dns.iroh.link
 ```
 
-These servers are run by [n0](https://n0.computer), the company that builds
-iroh. If you run your own relay, this list becomes hostnames you control
-instead. See [Keeping traffic inside your network](#keeping-traffic-inside-your-network).
+Separately from the relays, allow `dns.iroh.link`. That one is used no matter
+which relays the application points at, unless your developers have replaced
+address lookup with something you run.
 
 If your developers use the Iroh Services dashboard for monitoring or
 diagnostics, that traffic travels over the connections above and needs no extra
@@ -138,8 +150,11 @@ firewall rules.
 ### Can the relay operator read our data?
 
 No. Traffic is encrypted end to end between the two devices. A relay forwards
-encrypted bytes and holds no key that can decrypt them. This is true of the
-public relays run by n0 and of any relay you run yourself.
+encrypted bytes and holds no key that can decrypt them.
+
+This holds for every relay: ones you run, dedicated ones from Iroh Services, and
+the shared public ones. It also means running the relay yourself does not give
+you visibility into the contents. What it gives you is control of the path.
 
 ### What can a relay see?
 
@@ -161,11 +176,12 @@ application, not the network. Your developers can log what the application sends
 and receives. Running your own relay gives you full control of the path and the
 connection metadata, but not the contents.
 
-### What leaves our network with the default configuration?
+### What actually leaves our network?
 
 Four things:
 
-1. An encrypted connection to one of the n0 relay servers listed above.
+1. An encrypted connection to the relay servers the application is configured
+   with.
 2. A small signed record published to `dns.iroh.link`, containing the device's
    public key and which relay it is using. **Internal IP addresses are not
    published by default.** iroh deliberately filters them out to avoid leaking
@@ -177,12 +193,13 @@ Four things:
 
 ### Can we control which of our devices are allowed to use it?
 
-Yes, if you run your own relay. You can allow a specific list of devices, or
+Yes, on relays you run yourself. You can admit a specific list of devices or
 require a shared password. See
 [Controlling who can use your relay](#controlling-who-can-use-your-relay).
+Dedicated relays from Iroh Services do this for you, and only admit devices
+belonging to your project.
 
-On the public n0 relays, no. Any application with the relay URL can connect to
-them.
+On the shared public relays, no. Any application that knows the URL can connect.
 
 ### Can we turn parts of it off?
 
@@ -353,8 +370,8 @@ endpoint builder, as in the UDP example above.
 ## Keeping traffic inside your network
 
 If you would rather no iroh traffic left your network at all, you can replace
-every piece of shared infrastructure with your own. This is the right answer to
-most concerns about relays, third-party servers, and data residency.
+every piece of infrastructure outside it with your own. This is the right answer
+to most concerns about relays, third-party servers, and data residency.
 
 There are three pieces, and you can replace them independently.
 
@@ -372,9 +389,9 @@ Either run an internal
 or drop address lookup entirely and distribute device addresses through a system
 you already have.
 </Step>
-<Step title="Have the application stop using the n0 defaults">
-This is a one-line change for your developers. It removes the n0 relays and DNS
-server from the application's configuration.
+<Step title="Have the application stop using the shared defaults">
+This is a one-line change for your developers. It removes the shared public
+relays and DNS server from the application's configuration.
 </Step>
 </Steps>
 
@@ -385,7 +402,7 @@ use iroh::{Endpoint, RelayMap, RelayMode, RelayUrl, endpoint::presets};
 
 let relay: RelayUrl = "https://relay.internal.example.com".parse()?;
 
-// presets::Empty starts with no n0 infrastructure configured.
+// presets::Empty starts with no external infrastructure configured.
 let endpoint = Endpoint::builder(presets::Empty)
     .relay_mode(RelayMode::Custom(RelayMap::from_iter([relay])))
     .bind()
@@ -405,8 +422,8 @@ through a server we do not control. It is worth separating the two things that
 might mean, because they have different answers.
 
 **If the concern is that someone could read the data,** it is already addressed.
-A relay forwards encrypted bytes and cannot decrypt them. Nobody operating a
-relay, including n0, can see inside your traffic.
+A relay forwards encrypted bytes and cannot decrypt them. No relay operator can
+see inside your traffic.
 
 **If the concern is control, jurisdiction, or data residency,** the answer is to
 run the relay yourself, as described above. Your server, your network, your
@@ -620,10 +637,11 @@ Firewall and DNS:
 
 Ask your developers to:
 
+- [ ] Tell you which relay hostnames the application is configured with, before
+      you write any of the rules above
 - [ ] Use the operating system certificate store if you inspect TLS traffic
 - [ ] Configure the proxy address if outbound traffic must be proxied
 - [ ] Disable automatic router port opening
-- [ ] Tell you which relay hostnames the application is actually configured with
 
 If you run your own relay:
 
