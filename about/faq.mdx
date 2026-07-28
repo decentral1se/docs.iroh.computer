@@ -46,6 +46,8 @@ From the perspective of our QUIC implementation, the relay is "just another UDP 
 Because the relays are relaying traffic, they theoretically know that Endpoint ID X talks to Endpoint ID Y and how many bytes are sent this way, but only for as long as these endpoints haven't established a direct connection yet.
 However, we don't record this data on our relays.
 
+If you're answering this question for a security review rather than for yourself, [Enterprise Networks](/deployment/enterprise-networks#security-and-privacy-questions) covers it alongside what a relay can see, what leaves your network, and what running your own relay does and doesn't change.
+
 
 ## How secure is iroh's end-to-end encryption?
 
@@ -67,6 +69,8 @@ The easiest path is a [dedicated relay via Iroh Services](/concepts/relays#dedic
 
 Running your own relay doesn't affect interoperability. Your endpoints can still connect to peers using other relay servers, and since relays are stateless and logic lives at the client, can be swapped independently.
 
+For firewall rules, certificates, and access control on a relay you host yourself, see [Running your own relay](/deployment/enterprise-networks#running-your-own-relay).
+
 
 ## What are the risks of running a public relay?
 
@@ -85,7 +89,7 @@ If you're in a local network together you can enable [local network address look
 ## How can I control which relay servers iroh connects to?
 
 Iroh will only talk to relay servers that it knows URLs for.
-By default iroh is configured with 3 relay servers from the [default `RelayMap`](https://docs.rs/iroh/latest/iroh/defaults/prod/index.html).
+By default iroh is configured with four relay servers from the [default `RelayMap`](https://docs.rs/iroh/latest/iroh/defaults/prod/index.html).
 If your endpoint has address lookup services configured (which is
 the default with the `N0` preset), then iroh might connect to 
 relay servers discovered that way.
@@ -108,6 +112,8 @@ This returns an `impl Watchable<Value = bool>` that reflects whether the endpoin
 
 Iroh gives you full control over which endpoints are allowed to connect via [endpoint hooks](/connecting/endpoint-hooks). Hooks let you intercept incoming connections before they're accepted, so you can allow or reject them based on the connecting endpoint's ID, your own allowlist/denylist logic, or any application-specific policy.
 
+That controls who your application accepts. If you run your own relay, you can separately control which endpoints the relay itself will carry traffic for, by endpoint ID, a shared token, or a callback to your own service. See [Controlling who can use your relay](/deployment/enterprise-networks#controlling-who-can-use-your-relay).
+
 
 ## What is "Address Lookup" in iroh and which one should I enable?
 
@@ -128,13 +134,24 @@ First, peer-to-peer [address lookup over the Mainline DHT](/connecting/dht-addre
 When you do a P2P address lookup, any Mainline server node could respond: each [BEP 44](https://www.bittorrent.org/beps/bep_0044.html) record is stored on 20 random Mainline nodes. So yes, a BitTorrent client that participates in the DHT as a server and has been running long enough to be in the routing tables will respond.
 
 
+## Our IT or security team needs to approve iroh. What do they need?
+
+One outbound firewall rule: HTTPS on TCP 443 to your relay servers. Nothing listens for inbound connections, no ports are forwarded, and all traffic is end-to-end encrypted whether it goes direct or through a relay. Allowing outbound UDP as well is optional, and it is what lets most connections go direct.
+
+[Enterprise Networks](/deployment/enterprise-networks) is written for that reader rather than for a developer: what iroh does on a managed network, what to allow, the security and privacy questions that come up in review, and how to run every part of it on infrastructure you control.
+
+
 ## What ports does iroh use?
 
-Iroh listens on **Two UDP ports**: one for IPv4 and one for IPv6, used for direct P2P connections; configurable via [`endpoint::Builder`](https://docs.rs/iroh/latest/iroh/endpoint/struct.Builder.html)
+**Outbound TCP 443** to your relay servers. This is the only connection iroh strictly requires, and it's an HTTPS connection that upgrades to a WebSocket.
+
+**Outbound UDP** for direct connections. Iroh binds **two UDP ports**, one for IPv4 and one for IPv6, assigned by the operating system unless you set them via [`endpoint::Builder`](https://docs.rs/iroh/latest/iroh/endpoint/struct.Builder.html). Direct connections go to arbitrary destination ports on the far side, and **UDP 7842** on the relay is used to learn your own public address.
 
 Iroh will work behind firewalls that only allow TCP outbound, but direct connections won't be possible in that case; all traffic will fall back to the relay.
 
 It's totally possible that you maintain connections to multiple relays at a time, if you're connected to iroh endpoints that have another home relay than yours. Each of these connections will use another TCP socket.
+
+For the full list of flows, hostnames, and firewall rules to hand to a network administrator, see [Enterprise Networks](/deployment/enterprise-networks).
 
 
 ## How would onion-routing work with iroh?
