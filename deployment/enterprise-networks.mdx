@@ -1,0 +1,569 @@
+---
+title: "Enterprise Networks"
+description: "Firewall, proxy, DNS, and Wi-Fi configuration for running iroh on managed corporate networks"
+---
+
+Running iroh on a managed corporate network takes one firewall rule: outbound
+TCP 443 to your relay hostnames. Allowing UDP as well is what turns most
+connections direct. There are no inbound rules, no port forwarding, no static
+IPs, and no listening ports to expose.
+
+Everything below is the detail behind those three sentences: every flow an
+endpoint opens, what happens when each one is blocked, and how to configure iroh
+around the restrictions a corporate network typically imposes.
+
+## Two levels of configuration
+
+| | What you allow | What you get |
+|---|---|---|
+| **Minimum** | Outbound TCP 443 to your relay hostnames | Every connection works. All traffic is relayed. |
+| **Recommended** | The above, plus outbound UDP | Roughly nine connections in ten become direct: lower latency, higher throughput, and no relay egress |
+
+Both are supported configurations. iroh detects which one it is on and adapts at
+runtime. You do not configure a mode, and connections do not fail if UDP is
+unavailable.
+
+## Traffic reference
+
+All flows are **outbound-initiated**. Return traffic arrives on the same 5-tuple
+and is permitted by any stateful firewall.
+
+| Traffic | Transport | Destination | Required |
+|---|---|---|---|
+| Relay connection | TCP 443 (TLS, WebSocket upgrade at `/relay`) | Your relay hostnames | **Yes** |
+| Relay latency probe | TCP 443 (HTTPS `GET /ping`) | Every configured relay hostname | **Yes** |
+| Address publishing | TCP 443 (HTTPS `PUT`, pkarr) | `dns.iroh.link` | Default preset only |
+| Address resolution | UDP/TCP 53 via your own resolver | TXT records under `dns.iroh.link` | Default preset only |
+| QUIC address discovery | UDP 7842 | Your relay hostnames | Recommended |
+| Direct QUIC and hole punching | UDP, ephemeral source port to arbitrary destination port | Any peer | Recommended |
+| Port mapping | UDP 1900 (SSDP), UDP 5351 (PCP/NAT-PMP) | Local gateway only | Optional |
+| mDNS address lookup | UDP 5353 to `224.0.0.251`, `ff02::fb` | Local segment only | Off by default |
+
+By default an endpoint binds `0.0.0.0:0` and `[::]:0`, an OS-assigned ephemeral
+UDP port on all interfaces. To pin it to a fixed port for a narrower egress
+rule:
+
+```rust
+use iroh::{Endpoint, endpoint::presets};
+
+let endpoint = Endpoint::builder(presets::N0)
+    .clear_ip_transports()
+    .bind_addr("0.0.0.0:49555")?
+    .bind()
+    .await?;
+```
+
+Iroh Services features, [metrics](/iroh-services/metrics/index) and
+[network diagnostics](/iroh-services/net-diagnostics/usage), travel over your
+existing iroh connections. They need no additional firewall rules.
+
+## Hostnames to allowlist
+
+With the default `presets::N0` configuration:
+
+```
+use1-1.relay.n0.iroh.link
+usw1-1.relay.n0.iroh.link
+euc1-1.relay.n0.iroh.link
+aps1-1.relay.n0.iroh.link
+dns.iroh.link
+```
+
+<Note>
+iroh releases before 1.0 used `use1-1.relay.iroh.network`,
+`euw1-1.relay.iroh.network`, and `aps1-1.relay.iroh.network`. Include those too
+if you have older clients in the fleet.
+</Note>
+
+If you deploy [dedicated relays](/deployment/dedicated-infrastructure), your
+allowlist becomes a short list of hostnames you own, and endpoints stop
+contacting n0 infrastructure entirely. This is the recommended posture for
+production on a managed network. See
+[Running entirely inside your perimeter](#running-entirely-inside-your-perimeter).
+
+## Working with a UDP-restricted network
+
+Many enterprise networks restrict UDP, on the reasoning that it is harder to
+track and that older firewalls cannot inspect it statefully. iroh is built to
+work either way, so this does not need to be a blocker.
+
+### iroh works with UDP fully blocked
+
+The relay path is a WebSocket over TLS on TCP 443. To a firewall it is an
+ordinary long-lived HTTPS connection, and it is subject to the same policy,
+logging, and allowlisting as any other HTTPS destination. If your network passes
+HTTPS, it passes iroh.
+
+### What blocking UDP costs
+
+Every byte between two peers takes a round trip through a relay. Expect added
+latency proportional to the distance to the nearest relay, throughput bounded by
+the relay rather than by the peers' links, and relay egress you either pay for
+or contend for on shared public infrastructure. Nothing breaks; it is slower and
+more expensive.
+
+### Why allowing UDP is usually reasonable
+
+- **It is QUIC, not raw datagrams.** Connection-oriented, congestion-controlled,
+  TLS 1.3 handshake, retransmission, and flow control. It behaves like a TCP
+  flow that happens to ride UDP.
+- **Your network probably already carries it.** Chrome, Edge, and Safari use
+  HTTP/3 over UDP 443 by default for a large share of the web. iroh's traffic is
+  the same protocol family.
+- **Flows are always outbound-first.** No inbound rule, no port forward, and no
+  exposed listener. A stateful firewall sees an outbound flow and its replies.
+- **Idle mappings do not linger.** iroh sends a heartbeat every 5 seconds on an
+  active path and tears a path down after 15 seconds without traffic. A UDP idle
+  timeout of 30 seconds or more on your firewall is comfortable, and abandoned
+  state ages out quickly.
+- **Inspection is not the tradeoff.** All iroh traffic is end-to-end encrypted
+  regardless of path. The TCP 443 relay path is no more inspectable than the UDP
+  path: a middlebox sees ciphertext either way. If your policy requires
+  visibility into the payload, the answer is to run relays inside your perimeter
+  and inspect at the application, not to block UDP.
+
+### Partial UDP allowances do not help
+
+Allowing UDP only to port 443 buys nothing. Direct paths use ephemeral ports on
+both ends, and QUIC address discovery targets port 7842 on the relay. It is
+effectively all-or-relay for internet peers.
+
+<Tip>
+The exception worth knowing: **two peers on the same corporate network connect
+directly over the LAN**, governed by your internal segmentation policy rather
+than the perimeter firewall. Branch-office and same-site traffic can stay
+direct and never touch a relay even when the perimeter blocks UDP outbound.
+</Tip>
+
+### Forcing relay-only
+
+On a network where UDP is blackholed, you can skip UDP entirely. This removes
+probe traffic that shows up as noise in IDS logs and speeds up startup, since
+iroh no longer waits for probes that will never be answered.
+
+```rust
+use iroh::endpoint::{presets, PortmapperConfig};
+use iroh::Endpoint;
+
+let endpoint = Endpoint::builder(presets::N0)
+    // No UDP sockets at all: relay transport only.
+    .clear_ip_transports()
+    // Skips SSDP multicast gateway discovery.
+    .portmapper_config(PortmapperConfig::Disabled)
+    .bind()
+    .await?;
+```
+
+`PortmapperConfig::Disabled` is worth setting on its own even when UDP is
+allowed. The UPnP discovery step multicasts SSDP to `239.255.255.250:1900`,
+which is a common IDS signature and raises firewall prompts on some client
+operating systems. Disabling it costs you gateway-assisted port mapping, which
+most enterprise gateways do not offer anyway.
+
+## HTTP proxies
+
+If your network requires egress through an HTTP proxy, iroh can tunnel its relay
+and HTTPS traffic through it with `CONNECT`:
+
+```rust
+let endpoint = Endpoint::builder(presets::N0)
+    // Reads HTTP_PROXY, http_proxy, HTTPS_PROXY, https_proxy, in that order.
+    .proxy_from_env()
+    .bind()
+    .await?;
+```
+
+Use `.proxy_url(url)` to set it explicitly instead. The proxy applies to relay
+and HTTPS traffic only; UDP paths are unaffected, and a proxied deployment
+typically ends up relay-only in practice.
+
+## TLS interception
+
+By default iroh verifies relay certificates against a **compiled-in copy of the
+Mozilla root store**. It does not consult the operating system's trust store, so
+a TLS-intercepting proxy presenting a corporate CA will cause relay connections
+to fail with a certificate error even though the CA is installed on the machine.
+
+Switch to the platform verifier so the CA your MDM distributed is honored:
+
+```rust
+use iroh::tls::CaTlsConfig;
+
+let endpoint = Endpoint::builder(presets::N0)
+    .ca_tls_config(CaTlsConfig::system())
+    .bind()
+    .await?;
+```
+
+`CaTlsConfig::custom_roots(certs)` trusts only the roots you supply, and
+`CaTlsConfig::system().with_extra_roots(certs)` adds to the OS set.
+
+<Warning>
+This affects the relay and HTTPS paths only. Peer-to-peer QUIC connections
+authenticate with raw public keys bound to endpoint IDs and cannot be
+intercepted: a middlebox that substitutes a certificate only causes the
+handshake to be rejected. In practice no proxy sits in a peer-to-peer path.
+</Warning>
+
+## DNS filtering
+
+With the default preset, resolving a peer by its endpoint ID means a TXT lookup
+for `_iroh.<endpoint-id>.dns.iroh.link` through your normal resolver. Two
+enterprise patterns break this:
+
+- **TXT-record filtering.** DNS security products that block or strip TXT
+  responses as a DNS-tunneling heuristic will silently break address lookup.
+- **Split-horizon resolvers** that do not forward queries for `iroh.link`.
+
+The symptom is distinctive: connections by explicit address succeed, but
+connecting by endpoint ID fails to resolve. Allowlist `dns.iroh.link` in your
+resolver policy, or drop DNS-based lookup and distribute addresses out of band.
+
+## Running entirely inside your perimeter
+
+For deployments where no iroh traffic may leave the network, replace all three
+pieces of shared infrastructure:
+
+<Steps>
+<Step title="Self-host relays on internal hostnames">
+Run the [relay binary](https://github.com/n0-computer/iroh/tree/main/iroh-relay)
+on hosts your endpoints can reach, and point clients at them with
+`RelayMode::Custom`. See [Dedicated
+Infrastructure](/deployment/dedicated-infrastructure).
+</Step>
+<Step title="Replace address lookup">
+Either run your own [iroh-dns-server](https://github.com/n0-computer/iroh/tree/main/iroh-dns-server)
+on an internal zone, or drop address lookup entirely and hand out
+`EndpointAddr` values through your existing service discovery.
+</Step>
+<Step title="Build the endpoint without the n0 preset">
+`presets::N0` configures n0's relays and DNS. Build from
+`presets::Empty` and add only what you run.
+</Step>
+</Steps>
+
+```rust
+use iroh::{Endpoint, RelayMap, RelayMode, RelayUrl, endpoint::presets};
+
+let relay: RelayUrl = "https://relay.internal.example.com".parse()?;
+
+let endpoint = Endpoint::builder(presets::Empty)
+    .relay_mode(RelayMode::Custom(RelayMap::from_iter([relay])))
+    .bind()
+    .await?;
+```
+
+For an air-gapped LAN with no relay at all, combine
+[mDNS address lookup](/connecting/local-address-lookup) with
+`RelayMode::Disabled`. Peers discover each other by multicast on
+`224.0.0.251:5353` and connect directly. This requires that your switches
+forward multicast on the segment and that client isolation is off.
+
+## Never sending data over a relay
+
+The request usually arrives as a policy statement: no application data may
+transit a server we do not control. It is worth separating what is being asked
+for, because iroh answers the confidentiality version and the control version
+differently.
+
+### What a relay can and cannot see
+
+All iroh traffic is end-to-end encrypted between endpoints. A relay forwards
+ciphertext and holds no key that can open it, whether the relay is ours, yours,
+or a third party's. What a relay does observe is metadata: which endpoint IDs
+are talking to each other, when, and how much. That is a real disclosure and a
+reasonable thing to care about, but it is not the same as reading your data.
+
+If the concern is confidentiality, it is already addressed. If the concern is
+metadata, jurisdiction, or data residency, the fix is to run the relay yourself,
+as described in the previous section. Your relay, your network, your logs, and
+nothing leaves the perimeter.
+
+### Turning relay data off entirely
+
+If you still need endpoints that will never send a byte through a relay:
+
+```rust
+let endpoint = Endpoint::builder(presets::Empty)
+    .relay_mode(RelayMode::Disabled)
+    .bind()
+    .await?;
+```
+
+`clear_relay_transports()` does the same to a builder that already has relays
+configured.
+
+### Why this is usually the wrong lever
+
+Disabling relays removes the fallback, but it also removes the machinery that
+makes direct connections happen in the first place.
+
+- **Roughly one connection in ten stops working.** Symmetric NATs and strict
+  corporate firewalls do not permit hole punching. Those connections relay
+  today. Without a relay they fail outright, with no fallback and no error a
+  network administrator can act on.
+- **You lose the rendezvous, not just the fallback.** The relay is how two peers
+  first reach each other and coordinate the simultaneous send that opens the
+  hole. With relays off, peers need another way to find each other: mDNS on the
+  same segment, or addresses you distribute yourself. An endpoint behind a NAT
+  with no other signaling channel cannot be dialed at all.
+- **Connections get slower to establish.** Normally iroh sends the first bytes
+  over the relay immediately and upgrades to a direct path once hole punching
+  completes. Without a relay, nothing flows until hole punching succeeds or
+  fails.
+- **Network changes become outages.** Moving between Wi-Fi and cellular, or a
+  DHCP lease change, invalidates direct paths. The relay normally carries
+  traffic during the seconds it takes to establish a new one.
+
+The cost is not evenly distributed either. It falls on whichever users happen to
+sit behind the most restrictive networks, which is often the ones you can
+least afford to break.
+
+### A relay that cannot carry payload
+
+If what you want is a server that assists NAT traversal but is architecturally
+incapable of forwarding data, run the relay with relaying switched off:
+
+```toml
+enable_relay = false
+enable_quic_addr_discovery = true
+```
+
+The server then starts only the QUIC address discovery listener on UDP 7842. It
+reports the reflexive address it observes and runs no relay endpoint at all, so
+no configuration mistake on a client can cause data to flow through it.
+
+<Warning>
+This is an advanced configuration and it is not a drop-in replacement for a
+relay. Clients still list the server in their relay map to use it for address
+discovery, but they will not obtain a home relay from it and get no fallback
+path, so every tradeoff in the previous section still applies. Test it against
+your own fleet before committing to it.
+</Warning>
+
+## Locking down an internal relay
+
+### Firewall rules for the relay host
+
+These are **inbound** rules on the relay itself. Ports are derived from
+`http_bind_addr` (default `[::]:80`) unless you set them explicitly.
+
+| Port | Transport | Purpose | Needed when |
+|---|---|---|---|
+| 443 | TCP | Relay WebSocket at `/relay`, latency probe at `/ping` | Always |
+| 7842 | UDP | QUIC address discovery | `enable_quic_addr_discovery = true` |
+| 80 | TCP | Let's Encrypt HTTP-01 challenge, captive-portal check | `cert_mode = "LetsEncrypt"` |
+| 9090 | TCP | Prometheus metrics | Scraping only. Never expose this. |
+
+<Warning>
+The metrics server is **on by default** and binds `[::]:9090`, on all
+interfaces. Set `metrics_bind_addr` to a loopback or management address, or set
+`enable_metrics = false`.
+</Warning>
+
+An internal relay usually cannot complete a Let's Encrypt HTTP-01 challenge,
+because that requires the hostname to be publicly resolvable and port 80
+reachable from the internet. Issue a certificate from your internal PKI instead:
+
+```toml
+# relay.toml
+enable_relay = true
+enable_quic_addr_discovery = true
+http_bind_addr = "[::]:80"
+metrics_bind_addr = "127.0.0.1:9090"
+
+[tls]
+https_bind_addr = "[::]:443"
+quic_bind_addr  = "[::]:7842"
+cert_mode = "Manual"
+manual_cert_path = "/etc/iroh-relay/relay.crt"
+manual_key_path  = "/etc/iroh-relay/relay.key"
+```
+
+Clients must then trust the issuing CA. iroh does **not** use the OS trust store
+by default, so pair this with `CaTlsConfig::system()` or
+`CaTlsConfig::custom_roots(...)`. See [TLS interception](#tls-interception).
+
+### Restricting who may use the relay
+
+Firewall rules control which *hosts* reach the relay. The relay's own `access`
+config controls which *endpoints* it admits, and it is checked after the relay
+handshake has cryptographically authenticated the endpoint ID, so an allowlist
+entry cannot be spoofed by another endpoint.
+
+```toml
+# Default: no restriction.
+access = "everyone"
+
+# Fixed fleet: admit only these endpoint IDs (lowercase hex, as printed by
+# `endpoint.id()`).
+access.allowlist = [
+  "523c7996bad77424cbdfd0f0f0b8b5d0d9f9c1b2a3e4f5061718293a4b5c6d7e",
+  "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+]
+
+# Or the inverse.
+access.denylist = ["..."]
+
+# Shared secret: admit anyone presenting one of these bearer tokens.
+# Overridable at runtime with IROH_RELAY_ACCESS_TOKEN.
+access.shared_token = ["token-a", "token-b"]
+
+# Delegate to your own service.
+access.http = { url = "https://inventory.internal.example.com/iroh-access", bearer_token = "..." }
+```
+
+The `http` mode sends a `POST` with the connecting endpoint's ID in an
+`X-Iroh-Endpoint-Id` header, and admits the endpoint only on a `200` whose body
+is `true`. Anything else is a denial. Its own bearer token can come from
+`IROH_RELAY_HTTP_BEARER_TOKEN`.
+
+| Mode | Use when |
+|---|---|
+| `allowlist` | Small fixed fleet whose endpoint IDs you already manage |
+| `shared_token` | Dynamic fleet; you want one rotatable secret, not per-device enrollment |
+| `http` | You already have an inventory or device-management service to ask |
+| `denylist` | You need to evict specific endpoints from an otherwise open relay |
+
+Clients present a token by attaching it to the relay map:
+
+```rust
+use iroh::{Endpoint, RelayMap, RelayMode, RelayUrl, endpoint::presets};
+
+let relay: RelayUrl = "https://relay.internal.example.com".parse()?;
+let relay_map = RelayMap::from_iter([relay]).with_auth_token("token-a");
+
+let endpoint = Endpoint::builder(presets::Empty)
+    .relay_mode(RelayMode::Custom(relay_map))
+    .bind()
+    .await?;
+```
+
+<Warning>
+Tokens are looked up **per relay URL from the local relay map**. An endpoint
+will dial whatever relay a peer publishes as its home relay, including one
+absent from its own map, but it will present no token and be refused. Ship the
+same relay map, with the same tokens, to every site.
+</Warning>
+
+## Split networks and multiple sites
+
+### How reachability actually works
+
+An endpoint picks one **home relay**, the lowest-latency reachable relay from
+its configured map, and publishes it through address lookup. To reach a peer,
+your endpoint connects to **that peer's home relay**, not to your own. It keeps
+its home relay connection open permanently and closes other relay connections
+after 60 seconds idle.
+
+So the requirement is not "both sites configured with the same relay." It is:
+
+> Each side must be able to reach the relay the *other* side selected.
+
+### Failure modes across two LANs
+
+| Situation | What happens | Fix |
+|---|---|---|
+| Site A reaches only relay-A, Site B only relay-B | Home relay selection converges per site. Peers publish relays the other cannot reach, and never connect. | Deploy a relay both sites reach, or make relay-A and relay-B mutually reachable and list both in both maps. |
+| Both relays reachable, but Site B's map omits relay-A | Site B dials relay-A with no auth token and is refused at the handshake. Often looks direction-dependent or intermittent, since it depends on which relay each peer selected. | Ship an identical `RelayMap`, with the same URLs and tokens, to every site. |
+| Self-hosted address lookup on Site A only | Site B cannot resolve or publish endpoint IDs. Connecting by explicit address still works. | Make the DNS server reachable from both sites, or distribute `EndpointAddr` out of band. |
+| WAN allows TCP 443 but not UDP between sites | Everything relays across the WAN, including site-to-site traffic that could have been direct. | Allow UDP between site subnets. This is internal segmentation policy, not the perimeter firewall. |
+
+### What survives a partition
+
+Direct QUIC paths are independent of the relay once established. If the relay
+becomes unreachable but a direct path is alive, **the connection keeps working**:
+heartbeats continue every 5 seconds, and a path is torn down only after 15
+seconds of silence.
+
+What stops working during a partition is anything that needs the relay:
+establishing *new* connections, re-dialing after a drop, and address publishing.
+
+For a site that must keep working through a total uplink loss, give endpoints a
+path that never leaves the LAN:
+
+```rust
+use iroh::{Endpoint, RelayMode, endpoint::presets};
+use iroh_mdns_address_lookup::MdnsAddressLookup;
+
+// Local-only: multicast discovery, direct LAN connections, no relay.
+let endpoint = Endpoint::builder(presets::Empty)
+    .address_lookup(MdnsAddressLookup::builder())
+    .relay_mode(RelayMode::Disabled)
+    .bind()
+    .await?;
+```
+
+Run mDNS *alongside* your normal relay configuration rather than instead of it,
+and same-segment peers keep connecting while the uplink is down, without losing
+cross-site connectivity when it returns.
+
+### Recommended topologies
+
+| Topology | Deploy |
+|---|---|
+| Single site | One internal relay. Add a second for redundancy. |
+| Several sites on a corporate WAN | Two relays at well-connected sites, both in every endpoint's relay map, both reachable from every site. Home relay selection sorts out which is closer. |
+| Sites with no WAN path between them | Accept the partition: each site is its own iroh network. Cross-site traffic needs a relay in a location both can reach, typically a DMZ or cloud host. |
+| Site that must survive uplink loss | Relay config plus mDNS address lookup, so same-segment peers stay connected. |
+
+## Wireless networks
+
+Two access-point settings commonly defeat direct connections between devices on
+the same SSID:
+
+- **Client isolation** (also "AP isolation", "station isolation", or
+  "peer-to-peer blocking") prevents wireless clients from addressing each other.
+  Direct LAN connections fail and everything relays. It is on by default on most
+  guest networks.
+- **Multicast filtering** blocks mDNS address lookup. If you rely on local
+  discovery, enable multicast forwarding, or multicast-to-unicast conversion on
+  larger deployments.
+
+Neither breaks iroh. Both push traffic onto the relay path that could have
+stayed on your own LAN.
+
+## Verifying the configuration
+
+Run [`iroh-doctor`](https://github.com/n0-computer/iroh-doctor) from a machine
+on the network in question:
+
+```shell
+cargo install iroh-doctor
+iroh-doctor report
+```
+
+| Report field | What to look for |
+|---|---|
+| `udp` | `false` means UDP is blocked or filtered. Everything will relay. |
+| `ipv4` / `ipv6` | Which families reached a relay over UDP. |
+| `mapping_varies_by_dest_ip` | `true` indicates a symmetric NAT. Direct connections will mostly fail even with UDP open. |
+| `preferred_relay` | Which relay was selected. Absent means no relay was reachable at all. Check TCP 443 and DNS first. |
+| `relay_latency` | Per-relay latency. Missing entries are relays your firewall blocked. |
+| `captive_portal` | A non-null value means an intercepting portal is in the path. |
+
+For endpoints already deployed on customer or branch networks you cannot run a
+CLI on, use [Network Diagnostics](/iroh-services/net-diagnostics/usage). It runs
+the same probes on demand from the Iroh Services dashboard against any online
+endpoint in your project and returns the report to the dashboard.
+
+## Checklist for your network team
+
+- [ ] Allow outbound TCP 443 to your relay hostnames (required)
+- [ ] Allow outbound HTTPS to `dns.iroh.link`, or replace address lookup
+- [ ] Confirm your resolver returns TXT records for `dns.iroh.link`
+- [ ] Allow outbound UDP 7842 to your relay hostnames (recommended)
+- [ ] Allow outbound UDP to arbitrary destination ports (recommended)
+- [ ] Set the UDP idle timeout to 30 seconds or more
+- [ ] Add the corporate CA via `CaTlsConfig::system()` if TLS is intercepted
+- [ ] Set the proxy with `proxy_from_env()` if egress requires one
+- [ ] Turn off client isolation on wireless segments where peers should connect directly
+- [ ] Verify with `iroh-doctor report` from inside the network
+
+If you run your own relay:
+
+- [ ] Open inbound TCP 443, and UDP 7842 if QUIC address discovery is enabled
+- [ ] Bind the metrics server to loopback, or disable it
+- [ ] Issue the relay certificate from your internal PKI and set `CaTlsConfig::system()` on clients
+- [ ] Set `access` to something other than `everyone`
+- [ ] Ship an identical relay map, with tokens, to every site

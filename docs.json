@@ -142,6 +142,7 @@
             ]
           },
           "examples",
+          "deployment/enterprise-networks",
           "troubleshooting",
           "iroh-services/support",
           "about/faq"
