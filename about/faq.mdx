@@ -35,7 +35,7 @@ Relays serve two roles: they assist with [NAT Traversal](/concepts/nat-traversal
 
 Because relays are **stateless** (they route encrypted packets but store nothing), they're cheap to run and easy to scale. There's no database to sync, no state to migrate, and automatic failover across relay instances is built in.
 
-By default iroh is configured with four public relay servers run by number 0 (two in the US, one in Europe, and one in Asia), free to use for development and testing. To prevent abuse, throughput through public relays is rate-limited. For production workloads, you can run a [dedicated relay](/concepts/relays#dedicated-relays) or [self-host your own](/concepts/relays#deploy-your-own-relay).
+By default iroh is configured with several public rate-limited relay servers run by number 0 (two in the US, one in Europe, and one in Asia), free to use for development and testing. To prevent abuse, throughput through public relays is rate-limited. For production workloads, you can run a [dedicated relay](/concepts/relays#dedicated-relays) or [self-host your own](/concepts/relays#deploy-your-own-relay).
 
 
 ## Can relays read the traffic they route?
@@ -89,7 +89,7 @@ If you're in a local network together you can enable [local network address look
 ## How can I control which relay servers iroh connects to?
 
 Iroh will only talk to relay servers that it knows URLs for.
-By default iroh is configured with four relay servers from the [default `RelayMap`](https://docs.rs/iroh/latest/iroh/defaults/prod/index.html).
+By default iroh is configured with several public rate-limited relay servers from the [default `RelayMap`](https://docs.rs/iroh/latest/iroh/defaults/prod/index.html).
 If your endpoint has address lookup services configured (which is
 the default with the `N0` preset), then iroh might connect to 
 relay servers discovered that way.
