@@ -136,7 +136,7 @@ When you do a P2P address lookup, any Mainline server node could respond: each [
 
 ## Our IT or security team needs to approve iroh. What do they need?
 
-One outbound firewall rule: HTTPS on TCP 443 to your relay servers. Nothing listens for inbound connections, no ports are forwarded, and all traffic is end-to-end encrypted whether it goes direct or through a relay. Allowing outbound UDP as well is optional, and it is what lets most connections go direct.
+Iroh operates on open standards: HTTPS on TCP 443, QUIC HTTP/3, mTLS, and industry grade end to end encryption with elliptic curve keys. Nothing listens for inbound connections, no ports are forwarded, and all traffic is end-to-end encrypted whether it goes direct or through a relay. Allowing outbound UDP is optional, but it is what lets most connections go direct.
 
 [Enterprise Networks](/deployment/enterprise-networks) is written for that reader rather than for a developer: what iroh does on a managed network, what to allow, the security and privacy questions that come up in review, and how to run every part of it on infrastructure you control.
 
