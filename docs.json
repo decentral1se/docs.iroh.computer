@@ -40,7 +40,8 @@
               "iroh-services/net-diagnostics/quickstart",
               "protocols/using-quic",
               "examples/chat",
-              "add-a-relay"
+              "add-a-relay",
+              "configuring-networks"
             ]
           },
           {
@@ -142,7 +143,6 @@
             ]
           },
           "examples",
-          "deployment/enterprise-networks",
           "troubleshooting",
           "iroh-services/support",
           "about/faq"

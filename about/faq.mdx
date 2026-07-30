@@ -46,7 +46,7 @@ From the perspective of our QUIC implementation, the relay is "just another UDP 
 Because the relays are relaying traffic, they theoretically know that Endpoint ID X talks to Endpoint ID Y and how many bytes are sent this way, but only for as long as these endpoints haven't established a direct connection yet.
 However, we don't record this data on our relays.
 
-If you're answering this question for a security review rather than for yourself, [Enterprise Networks](/deployment/enterprise-networks#security-and-privacy-questions) covers it alongside what a relay can see, what leaves your network, and what running your own relay does and doesn't change.
+If you're answering this question for a security review rather than for yourself, [Enterprise Networks](/configuring-networks#security-and-privacy-questions) covers it alongside what a relay can see, what leaves your network, and what running your own relay does and doesn't change.
 
 
 ## How secure is iroh's end-to-end encryption?
@@ -69,7 +69,7 @@ The easiest path is a [dedicated relay via Iroh Services](/concepts/relays#dedic
 
 Running your own relay doesn't affect interoperability. Your endpoints can still connect to peers using other relay servers, and since relays are stateless and logic lives at the client, can be swapped independently.
 
-For firewall rules, certificates, and access control on a relay you host yourself, see [Running your own relay](/deployment/enterprise-networks#running-your-own-relay).
+For firewall rules, certificates, and access control on a relay you host yourself, see [Running your own relay](/configuring-networks#running-your-own-relay).
 
 
 ## What are the risks of running a public relay?
@@ -112,7 +112,7 @@ This returns an `impl Watchable<Value = bool>` that reflects whether the endpoin
 
 Iroh gives you full control over which endpoints are allowed to connect via [endpoint hooks](/connecting/endpoint-hooks). Hooks let you intercept incoming connections before they're accepted, so you can allow or reject them based on the connecting endpoint's ID, your own allowlist/denylist logic, or any application-specific policy.
 
-That controls who your application accepts. If you run your own relay, you can separately control which endpoints the relay itself will carry traffic for, by endpoint ID, a shared token, or a callback to your own service. See [Controlling who can use your relay](/deployment/enterprise-networks#controlling-who-can-use-your-relay).
+That controls who your application accepts. If you run your own relay, you can separately control which endpoints the relay itself will carry traffic for, by endpoint ID, a shared token, or a callback to your own service. See [Controlling who can use your relay](/configuring-networks#controlling-who-can-use-your-relay).
 
 
 ## What is "Address Lookup" in iroh and which one should I enable?
@@ -138,7 +138,7 @@ When you do a P2P address lookup, any Mainline server node could respond: each [
 
 Iroh operates on open standards: HTTPS on TCP 443, QUIC HTTP/3, mTLS, and industry grade end to end encryption with elliptic curve keys. Nothing listens for inbound connections, no ports are forwarded, and all traffic is end-to-end encrypted whether it goes direct or through a relay. Allowing outbound UDP is optional, but it is what lets most connections go direct.
 
-[Enterprise Networks](/deployment/enterprise-networks) is written for that reader rather than for a developer: what iroh does on a managed network, what to allow, the security and privacy questions that come up in review, and how to run every part of it on infrastructure you control.
+[Enterprise Networks](/configuring-networks) is written for that reader rather than for a developer: what iroh does on a managed network, what to allow, the security and privacy questions that come up in review, and how to run every part of it on infrastructure you control.
 
 
 ## What ports does iroh use?
@@ -151,7 +151,7 @@ Iroh will work behind firewalls that only allow TCP outbound, but direct connect
 
 It's totally possible that you maintain connections to multiple relays at a time, if you're connected to iroh endpoints that have another home relay than yours. Each of these connections will use another TCP socket.
 
-For the full list of flows, hostnames, and firewall rules to hand to a network administrator, see [Enterprise Networks](/deployment/enterprise-networks).
+For the full list of flows, hostnames, and firewall rules to hand to a network administrator, see [Enterprise Networks](/configuring-networks).
 
 
 ## How would onion-routing work with iroh?
@@ -272,3 +272,31 @@ It would also mean Endpoint IDs would be exactly 37x as big.
 To support post-quantum-cryptography, we would need to trade off usability with the risk should a sufficiently powerful quantum computers would become real.
 We believe it is much more important to serve existing use cases efficiently, so they have encryption *today*.
 We fully believe the work on post-quantum-cryptography is good and important and follow developments closely.
+
+## Does this punch holes in my firewall?
+
+No. The technique has an alarming name, so it is worth being precise about what
+actually happens.
+
+Two devices, each behind its own firewall, send an outbound packet to each other
+at roughly the same moment. Each firewall sees an outbound connection from a
+device on its own network and allows the reply, under the same rule that lets a
+browser load a website. Neither firewall is tricked, and neither is
+reconfigured.
+
+In practical terms:
+
+- iroh never accepts unsolicited inbound connections. No port is exposed to the
+  internet.
+- Every connection begins as outbound traffic from a device you control.
+- If your firewall does not allow the reply, nothing is bypassed. The connection
+  falls back to the relay.
+- If you block the relay hostnames too, iroh stops working. That is the intended
+  behavior, not something to defend against.
+
+One caveat on that last point. Blocking the hostnames listed below stops iroh in
+its default configuration, which is what almost every application uses. But the
+hostnames are a setting in the application, and iroh also supports other ways of
+finding peers that your developers could enable. If you need a hard guarantee
+rather than a sensible default, block outbound UDP as well, and ask your
+developers to confirm what the application is actually configured with.

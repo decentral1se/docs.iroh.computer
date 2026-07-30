@@ -1,5 +1,5 @@
 ---
-title: "Enterprise Networks"
+title: "Deploying to enterprise networks"
 description: "What iroh does on your network, what to allow through your firewall, and how to keep it under your control"
 ---
 
@@ -9,12 +9,10 @@ control.
 
 ## The one-minute version
 
-- **One firewall rule is required:** outbound HTTPS (TCP 443) to a short list of
-  hostnames. Nothing else is mandatory.
 - **Nothing listens for inbound connections.** You do not open any ports inward,
   forward any ports, or assign any static IP addresses.
 - **Allowing outbound UDP is optional.** It makes connections faster and
-  cheaper. iroh works without it.
+  cheaper, by being direct, but iroh works without it.
 - **All traffic is encrypted end to end**, including traffic that passes through
   a relay server. The relay operator cannot read it.
 - **You can run all of the infrastructure yourself** if you do not want traffic
@@ -25,11 +23,6 @@ look familiar. It needs the same two things Teams, Zoom, and WebEx need: a way
 for a device to learn its own public address, and a server that can pass traffic
 along when two devices cannot reach each other directly.
 
-<Note>
-Some of the changes on this page are made in the application, not on your
-network. Those are marked **For your developers** and include the code to hand
-over.
-</Note>
 
 ## What iroh does on your network
 
@@ -39,62 +32,39 @@ through a central server.
 
 A device running iroh produces three kinds of traffic.
 
-**Relay connections.** Each device opens one or a  few long-lived encrypted connections to
-a *relay server* over HTTPS on port 443. This is the role a TURN server plays in
-a VoIP system. The relay introduces two devices to each other and carries their
-traffic if they cannot reach each other directly. It is always used, at minimum
-for the introduction.
+**Relay connections.** Each device opens one or a few long-lived encrypted
+connections to *relay servers* on TCP port 443, as HTTPS requests that upgrade to
+a WebSocket. This is the role a TURN server plays in a VoIP system. The relay
+introduces two devices to each other and carries their traffic if they cannot
+reach each other directly. It is always used, at minimum for the introduction.
 
 **Address lookup.** To find another device, iroh looks up a DNS record for it.
 This is an ordinary DNS query through your own resolver.
 
 **Direct connections.** Once introduced, the two devices try to connect straight
-to each other over UDP. This part is optional. If you block it, they keep using
-the relay.
-
-## Does this punch holes in my firewall?
-
-No. The technique has an alarming name, so it is worth being precise about what
-actually happens.
-
-Two devices, each behind its own firewall, send an outbound packet to each other
-at roughly the same moment. Each firewall sees an outbound connection from a
-device on its own network and allows the reply, under the same rule that lets a
-browser load a website. Neither firewall is tricked, and neither is
-reconfigured.
-
-In practical terms:
-
-- iroh never accepts unsolicited inbound connections. No port is exposed to the
-  internet.
-- Every connection begins as outbound traffic from a device you control.
-- If your firewall does not allow the reply, nothing is bypassed. The connection
-  falls back to the relay.
-- If you block the relay hostnames too, iroh stops working. That is the intended
-  behavior, not something to defend against.
-
-One caveat on that last point. Blocking the hostnames listed below stops iroh in
-its default configuration, which is what almost every application uses. But the
-hostnames are a setting in the application, and iroh also supports other ways of
-finding peers that your developers could enable. If you need a hard guarantee
-rather than a sensible default, block outbound UDP as well, and ask your
-developers to confirm what the application is actually configured with.
+to each other over UDP. This part is optional. If a direct connection is not
+possible for some reason, the bi-directional connection continues to send data
+using the relay.
 
 ## What to allow
 
 ### Required
 
-| Allow | To | Why |
-|---|---|---|
-| Outbound TCP 443 | Your relay hostnames | The relay connection itself, and the latency checks that pick the closest relay |
-| Outbound TCP 443 | `dns.iroh.link` | Publishing the device's address so others can find it |
-| Normal DNS (UDP/TCP 53) | Your own resolver | Looking up other devices |
+| Allow | To | Protocol | Why |
+|---|---|---|---|
+| Outbound TCP 443 | Your relay hostnames | **HTTPS, upgraded to WebSocket** | The relay connection itself, and the latency checks that pick the closest relay |
+| Outbound TCP 443 | `dns.iroh.link` | HTTPS | Publishing the device's address so others can find it |
+| Normal DNS (UDP/TCP 53) | Your own resolver | DNS | Looking up other devices |
 
-The relay connection is a standard HTTPS connection that then upgrades to a
-WebSocket, which is the same thing a chat application does. If you
-run an application-aware firewall configured to permit only ordinary web
-browsing on port 443, it may block the upgrade. Allow the relay hostnames as a
-WebSocket destination.
+<Warning>
+**Opening TCP 443 is not always enough on its own.** The relay connection starts
+as a standard HTTPS request and then upgrades to a WebSocket, which is the same
+thing a chat application does. If you run an application-aware firewall, a web
+filter, or a proxy that permits ordinary web browsing on port 443 but blocks
+WebSocket upgrades, iroh will not connect at all.
+
+Allow the relay hostnames as a WebSocket destination, not just as an HTTPS one.
+</Warning>
 
 ### Recommended
 
