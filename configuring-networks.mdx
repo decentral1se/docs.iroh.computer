@@ -34,7 +34,8 @@ Firewall and DNS:
 -  Allow outbound TCP 443 to `dns.iroh.link`, or plan to replace address lookup
 -  Confirm your DNS filtering does not strip TXT records for `dns.iroh.link`
 -  Allow outbound UDP 7842 to the relay hostnames 
--  Allow outbound UDP to any destination port 
+-  Allow outbound UDP to any destination port. A narrowed range will not work;
+   see [We allowlisted a range of UDP ports](#we-allowlisted-a-range-of-udp-ports-and-it-still-failed)
 -  Set your firewall's UDP idle timeout to 30 seconds or more
 -  Turn off client isolation on wireless segments where devices should reach each other
 -  Test with `iroh-doctor report` from inside the network
@@ -113,7 +114,7 @@ your developers, and expect one of three answers.
 
 **Relays you run yourself.** The hostnames are ones you already control, on your
 own network or in your own cloud account. See
-[Running your own relay](#running-your-own-relay).
+[Help running your own relay](#help-running-your-own-relay).
 
 **Dedicated relays.** Servers provisioned for your project through Iroh Services
 and used by nobody else, on hostnames given to you when they are set up.
@@ -173,11 +174,9 @@ active and gives up on an idle path after a specified timeout. A UDP idle
 timeout of 30 seconds or more on your firewall is recommended.
 
 One thing that does not work: allowing UDP only to port 443. Direct connections
-use randomly assigned high-numbered ports on both ends, so a rule scoped to
-port 443 gains you nothing. The destination port cannot be narrowed. If you need
-a tighter rule than "any destination port", your developers can pin the
-application to a fixed source port with `.bind_addr("0.0.0.0:49555")`, and you
-can scope the rule to that source port instead.
+use operating-system-assigned ports on both ends, so a rule scoped to port 443
+gains you nothing. Narrowing the range does not work either, for the reasons in
+the next section.
 
 <Tip>
 Two devices on the same office network connect directly to each other regardless
@@ -201,6 +200,88 @@ let endpoint = Endpoint::builder(presets::N0)
     .portmapper_config(PortmapperConfig::Disabled)
     .bind()
     .await?;
+```
+
+### We allowlisted a range of UDP ports and it still failed
+
+**What you will see:** you permit a range such as 50000-60000, and connections
+still fail or fall back to the relay, because iroh used a port just outside it
+such as 49970.
+
+**What is happening:** iroh does not choose its own port numbers. It binds each
+socket with port 0, which asks the operating system for any free port, and the
+operating system picks from its *ephemeral port range*. A firewall rule for
+outbound UDP matches on the source port, the destination port, or both, and
+neither is predictable:
+
+- The **source port** is assigned by the operating system on your own device, out
+  of a range that the operating system decides.
+- The **destination port** is the other device's source port, assigned by *its*
+  operating system. You have no visibility into it and no control over it.
+
+IANA reserves 49152-65535 for ephemeral ports, but not every operating system
+follows that, and the range is itself configurable by whoever administers the
+machine.
+
+| System | Typical default range | Check it with |
+|---|---|---|
+| Linux, and Android | 32768-60999 | `cat /proc/sys/net/ipv4/ip_local_port_range` |
+| Windows | 49152-65535 | `netsh int ipv4 show dynamicport udp` |
+| macOS | 49152-65535 | `sysctl net.inet.ip.portrange.first net.inet.ip.portrange.last` |
+
+Linux is the one that catches people out, because its default range starts well
+below the IANA number. Treat the table as a starting point and check your own
+machines rather than trusting it.
+
+**What to do:** two rules work, and guessing a range is not one of them.
+
+- **Allow outbound UDP to any destination port.** This is the supported
+  configuration and the one we recommend.
+- **Have the application bind fixed ports**, and scope your rule to exactly
+  those. Note that this constrains the *source* port only. The destination is
+  still whatever the far device chose, so this helps only if your firewall can
+  match on source port.
+
+**For your developers.** One port is bound per socket address, so a device using
+both IPv4 and IPv6 needs two. Bind at most one address per family, and clear the
+defaults first, because binding more than one per family gives undefined routing
+behavior:
+
+```rust
+use iroh::{Endpoint, endpoint::presets};
+
+let endpoint = Endpoint::builder(presets::N0)
+    .clear_ip_transports()
+    .bind_addr("0.0.0.0:55555")?
+    .bind_addr("[::]:55556")?
+    .bind()
+    .await?;
+```
+
+Read the port numbers from your own configuration rather than hard-coding them,
+so they can be set to whatever the network team allowed without a new build.
+
+A fixed port may already be in use, in which case binding fails. If you would
+rather start with OS-assigned ports than not start at all, match on
+`BindError::Sockets` and build the endpoint again without the fixed addresses:
+
+```rust
+use iroh::endpoint::BindError;
+
+let endpoint = match Endpoint::builder(presets::N0)
+    .clear_ip_transports()
+    .bind_addr("0.0.0.0:55555")?
+    .bind_addr("[::]:55556")?
+    .bind()
+    .await
+{
+    Ok(endpoint) => endpoint,
+    Err(BindError::Sockets { .. }) => {
+        tracing::warn!("configured ports unavailable, letting the OS assign them");
+        Endpoint::builder(presets::N0).bind().await?
+    }
+    Err(err) => return Err(err.into()),
+};
 ```
 
 ### We inspect TLS traffic
@@ -299,7 +380,7 @@ soften it in practice:
 - Most business-grade gateways either do not implement these protocols or have
   them turned off, in which case the request is ignored and nothing changes.
 - Connectivity does not depend on it. Without a port mapping, iroh falls back to
-  hole punching and then to the relay.
+  ordinary NAT traversal and then to the relay.
 
 The UPnP discovery step also multicasts to `239.255.255.250:1900`, which is a
 common intrusion detection signature and can raise firewall prompts on some

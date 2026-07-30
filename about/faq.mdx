@@ -69,8 +69,6 @@ The easiest path is a [dedicated relay via Iroh Services](/concepts/relays#dedic
 
 Running your own relay doesn't affect interoperability. Your endpoints can still connect to peers using other relay servers, and since relays are stateless and logic lives at the client, can be swapped independently.
 
-For firewall rules, certificates, and access control on a relay you host yourself, see [Running your own relay](/configuring-networks#running-your-own-relay).
-
 
 ## What are the risks of running a public relay?
 
@@ -112,7 +110,7 @@ This returns an `impl Watchable<Value = bool>` that reflects whether the endpoin
 
 Iroh gives you full control over which endpoints are allowed to connect via [endpoint hooks](/connecting/endpoint-hooks). Hooks let you intercept incoming connections before they're accepted, so you can allow or reject them based on the connecting endpoint's ID, your own allowlist/denylist logic, or any application-specific policy.
 
-That controls who your application accepts. If you run your own relay, you can separately control which endpoints the relay itself will carry traffic for, by endpoint ID, a shared token, or a callback to your own service. See [Controlling who can use your relay](/configuring-networks#controlling-who-can-use-your-relay).
+That controls who your application accepts. If you run your own relay, you can separately control which endpoints the relay itself will carry traffic for, by endpoint ID, a shared token, or a callback to your own service. That is configured on the relay itself; see the [relay documentation](https://github.com/n0-computer/iroh/tree/main/iroh-relay).
 
 
 ## What is "Address Lookup" in iroh and which one should I enable?
