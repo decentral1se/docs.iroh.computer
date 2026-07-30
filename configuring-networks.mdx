@@ -367,48 +367,11 @@ involved. This requires your switches to forward multicast and client isolation
 to be off. Your developers will find the setup in
 [mDNS address lookup](/connecting/local-address-lookup).
 
-## Running your own relay
+## Help running your own relay
 
-### Firewall rules for the relay server
-
-These are **inbound** rules on the relay server itself.
-
-| Port | Protocol | Purpose | Needed when |
-|---|---|---|---|
-| 443 | TCP | The relay service and its latency checks | Always |
-| 7842 | UDP | Telling devices their public address | Address discovery is enabled |
-| 80 | TCP | Let's Encrypt certificate validation | You use Let's Encrypt for the certificate |
-| 9090 | TCP | Prometheus monitoring | Your monitoring system only. Never expose this. |
-
-<Warning>
-The monitoring port is **enabled by default and listens on every network
-interface**. Set `metrics_bind_addr` to a loopback or management address, or set
-`enable_metrics = false`.
-</Warning>
-
-An internal relay usually cannot use Let's Encrypt, because that requires the
-hostname to be resolvable from the public internet and port 80 reachable from
-outside. Issue a certificate from your own internal certificate authority
-instead:
-
-```toml
-# relay.toml
-enable_quic_addr_discovery = true
-http_bind_addr = "[::]:80"
-metrics_bind_addr = "127.0.0.1:9090"
-
-[tls]
-https_bind_addr = "[::]:443"
-quic_bind_addr  = "[::]:7842"
-cert_mode = "Manual"
-manual_cert_path = "/etc/iroh-relay/relay.crt"
-manual_key_path  = "/etc/iroh-relay/relay.key"
-```
-
-Because iroh does not read the operating system's certificate store by default,
-your developers also need to point the application at the right authority. See
-[We inspect TLS traffic](#we-inspect-tls-traffic) for the code.
-
+If you want to run your own relay servers, see [Dedicated
+Infrastructure](/deployment/dedicated-infrastructure) for a deployment guide and
+[contact us](https://n0.computer/) if you want help with the setup.
 
 ## Multiple offices and sites
 
