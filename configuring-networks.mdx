@@ -141,7 +141,7 @@ firewall rules.
 
 ## Common situations
 
-### We block outbound UDP
+### If you block outbound UDP...
 
 **What you will see:** everything works, but more slowly, and all traffic goes
 through the relay.
@@ -202,7 +202,7 @@ let endpoint = Endpoint::builder(presets::N0)
     .await?;
 ```
 
-### We allowlisted a range of UDP ports and it still failed
+### If you allowlisted a range of UDP ports and iroh still failed...
 
 **What you will see:** you permit a range such as 50000-60000, and connections
 still fail or fall back to the relay, because iroh used a port just outside it
@@ -284,7 +284,7 @@ let endpoint = match Endpoint::builder(presets::N0)
 };
 ```
 
-### We inspect TLS traffic
+### If you inspect TLS traffic...
 
 **What you will see:** the application cannot connect at all, and logs show a
 certificate error, even though your inspection appliance's certificate authority
@@ -314,7 +314,7 @@ identify each other by their own cryptographic keys rather than by website
 certificates, so an inspection appliance cannot sit in the middle of one. In
 practice it would never be in that path anyway.
 
-### All traffic must go through a proxy
+### If all of your traffic must go through a proxy...
 
 **What you will see:** the application cannot reach a relay at all, because it
 tries to connect directly rather than through the proxy.
@@ -335,7 +335,7 @@ let endpoint = Endpoint::builder(presets::N0)
 Use `.proxy_url(url)` to set the address explicitly. A proxy only carries the
 relay connection, so a proxied deployment usually ends up relaying everything.
 
-### Our DNS filtering blocks it
+### If your DNS filtering blocks iroh...
 
 **What you will see:** connections work when the application is given an address
 directly, but fail when it tries to find a device by its identity. That split is
@@ -366,7 +366,7 @@ finding each other on the local network.
 be able to reach each other. Neither setting breaks iroh. Both just push traffic
 onto the relay that could have stayed on your own network.
 
-### Automatic port opening
+### If automatic port opening is enabled...
 
 **What is happening:** by default iroh asks the local gateway to open an external
 port for the device, using UPnP, NAT-PMP, or PCP. If your gateway implements one
