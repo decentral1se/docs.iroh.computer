@@ -116,66 +116,10 @@ firewall rules.
 
 ## Security and privacy questions
 
-### Can the relay operator read our data?
-
-No. Traffic is encrypted end to end between the two devices. A relay forwards
-encrypted bytes and holds no key that can decrypt them.
-
-This holds for every relay: ones you run, dedicated ones from Iroh Services, and
-the shared public ones. It also means running the relay yourself does not give
-you visibility into the contents. What it gives you is control of the path.
-
-### What can a relay see?
-
-The identities of the devices connected to it, which pairs are exchanging
-traffic, when, and how much. It cannot see file names, message contents, or
-anything else inside the connection.
-
-That connection metadata is a real disclosure, and it is a fair thing to care
-about. If it matters to you, run your own relay and it stays with you.
-
-### Can we inspect or log the contents?
-
-No, and this is not a property of the UDP path specifically. The relay
-connection on port 443 is also encrypted end to end, so a TLS inspection
-appliance sees encrypted data either way.
-
-If your policy requires visibility into content, the place to get it is the
-application, not the network. Your developers can log what the application sends
-and receives. Running your own relay gives you full control of the path and the
-connection metadata, but not the contents.
-
-### What actually leaves our network?
-
-Four things:
-
-1. An encrypted connection to the relay servers the application is configured
-   with.
-2. A small signed record published to `dns.iroh.link`, containing the device's
-   public key and which relay it is using. **Internal IP addresses are not
-   published by default.** iroh deliberately filters them out to avoid leaking
-   them to a public server.
-3. DNS lookups for the devices you connect to.
-4. If direct connections are allowed, UDP traffic to the other device, which
-   reveals your public IP address to that device. This is true of any direct
-   connection between two computers.
-
-### Can we control which of our devices are allowed to use it?
-
-Yes, on relays you run yourself. You can admit a specific list of devices or
-require a shared password. See
-[Controlling who can use your relay](#controlling-who-can-use-your-relay).
-Dedicated relays from Iroh Services with authentication enabled do this for you, and only admit devices
-belonging to your project.
-
-On the shared public relays, no. Any application that knows the URL can connect.
-
-### Can we turn parts of it off?
-
-Yes. Direct connections, automatic router port opening, local network discovery,
-and even relaying itself can each be disabled independently. Each one is a
-change your developers make in the application. The relevant sections below have
-the details.
+The questions a security or network review raises, including what a relay can
+see, what actually leaves your network, and what running your own relay does and
+does not change, are answered in
+[Security & Privacy](/concepts/security-privacy#questions-from-security-reviews).
 
 ## Common situations
 
