@@ -9,12 +9,15 @@ control.
 
 ## The one-minute version
 
-- **Nothing listens for inbound connections.** You do not open any ports inward,
-  forward any ports, or assign any static IP addresses.
-- **Allowing outbound UDP is optional.** It makes connections faster and
-  cheaper, by being direct, but iroh works without it.
 - **All traffic is encrypted end to end**, including traffic that passes through
   a relay server. The relay operator cannot read it.
+- **You do not have to open anything inward.** There is no inbound rule to write,
+  no port to forward, and no static IP to assign. Devices do listen on the UDP
+  sockets they bind, and by default iroh asks your gateway for an external port
+  over UPnP or NAT-PMP, which you can switch off. See
+  [Automatic port opening](#automatic-port-opening).
+- **Allowing outbound UDP is optional, but recommended.** It makes connections faster and
+  cheaper, by being direct, but iroh works without it.
 - **You can run all of the infrastructure yourself** if you do not want traffic
   leaving your network.
 
@@ -23,6 +26,27 @@ look familiar. It needs the same two things Teams, Zoom, and WebEx need: a way
 for a device to learn its own public address, and a server that can pass traffic
 along when two devices cannot reach each other directly.
 
+### Checklist
+
+Firewall and DNS:
+
+-  Allow outbound TCP 443 to the relay hostnames with WebSocket support 
+-  Allow outbound TCP 443 to `dns.iroh.link`, or plan to replace address lookup
+-  Confirm your DNS filtering does not strip TXT records for `dns.iroh.link`
+-  Allow outbound UDP 7842 to the relay hostnames 
+-  Allow outbound UDP to any destination port 
+-  Set your firewall's UDP idle timeout to 30 seconds or more
+-  Turn off client isolation on wireless segments where devices should reach each other
+-  Test with `iroh-doctor report` from inside the network
+
+Ask your developers to:
+
+- Tell you which relay hostnames the application is configured with, before
+      you write any of the rules above
+- Use the operating system certificate store if you inspect TLS traffic
+- Configure the proxy address if outbound traffic must be proxied
+- Disable automatic port opening, or confirm your gateway has UPnP and NAT-PMP
+      turned off already
 
 ## What iroh does on your network
 
@@ -79,7 +103,7 @@ Allowing these lets devices connect directly instead of relaying everything.
 
 | Traffic | What it is | Default |
 |---|---|---|
-| UDP 1900 and UDP 5351 on your local network | Asking the router to open a port automatically (UPnP, NAT-PMP) | On, and safe to turn off |
+| UDP 1900 and UDP 5351 on your local network | Asking the gateway to open an external port (UPnP, NAT-PMP, PCP). Opens an inbound path if your gateway honors it. | On by default, and safe to turn off |
 | UDP 5353 multicast on the local network | Finding devices on the same office network | Off unless your developers enable it |
 
 ### Hostnames to allow
@@ -114,7 +138,7 @@ If your developers use the Iroh Services dashboard for monitoring or
 diagnostics, that traffic travels over the connections above and needs no extra
 firewall rules.
 
-## Security and privacy questions
+### Security and privacy 
 
 The questions a security or network review raises, including what a relay can
 see, what actually leaves your network, and what running your own relay does and
@@ -147,11 +171,13 @@ Why allowing it is usually reasonable:
 - **Your network almost certainly carries it already.** Chrome, Edge, and Safari
   use HTTP/3 over UDP port 443 for a large share of the web, and every major
   conferencing product uses UDP for media.
-- **It is always outbound-first.** No inbound rule, no port forward, no exposed
-  service.
-- **Idle entries clear quickly.** iroh sends a keepalive every 5 seconds while a
-  connection is active and gives up on an idle path after 15 seconds. A UDP idle
-  timeout of 30 seconds or more on your firewall is comfortable.
+- **It is outbound-first.** You write no inbound rule, because the packets coming
+  back arrive on a flow your firewall already allowed out. The one exception is
+  automatic port opening, which is
+  [separately controllable](#automatic-port-opening).
+- **Idle entries clear quickly.** iroh sends a keepalive while a connection is
+active and gives up on an idle path after a specified timeout. A UDP idle
+timeout of 30 seconds or more on your firewall is recommended.
 
 One thing that does not work: allowing UDP only to port 443. Direct connections
 use randomly assigned high-numbered ports on both ends, so a rule scoped to
@@ -268,14 +294,34 @@ onto the relay that could have stayed on your own network.
 
 ### Automatic port opening
 
-By default, iroh asks the local router to open a port using UPnP and NAT-PMP.
-Most business-grade gateways do not offer this and ignore the request. The
-discovery step sends a multicast message to `239.255.255.250:1900`, which is a
-common intrusion detection signature and can trigger firewall prompts on some
-computers.
+**What is happening:** by default iroh asks the local gateway to open an external
+port for the device, using UPnP, NAT-PMP, or PCP. If your gateway implements one
+of those and is configured to honor requests, iroh gets a port mapped and peers
+can reach the device directly through it.
 
-Turning it off is a reasonable default on a managed network. It costs you
-nothing that your gateway was going to provide.
+This is the one thing iroh does that changes your perimeter without anyone asking
+you, so it is worth being explicit about. It is on in a default build. Two things
+soften it in practice:
+
+- Most business-grade gateways either do not implement these protocols or have
+  them turned off, in which case the request is ignored and nothing changes.
+- Connectivity does not depend on it. Without a port mapping, iroh falls back to
+  hole punching and then to the relay.
+
+The UPnP discovery step also multicasts to `239.255.255.250:1900`, which is a
+common intrusion detection signature and can raise firewall prompts on some
+client operating systems.
+
+**What to do:** if your gateway has UPnP or NAT-PMP enabled and you would rather
+iroh did not use it, you can turn those protocols off at the gateway, which
+affects everything on the network, or have your developers disable it in the
+application, which is the narrower fix. On a managed network, disabling it in the
+application is the reasonable default.
+
+To check whether your gateway is answering these requests at all, run the
+connectivity report described in
+[Testing your configuration](#testing-your-configuration). It includes a port
+mapping probe.
 
 **For your developers:** `.portmapper_config(PortmapperConfig::Disabled)` on the
 endpoint builder, as in the UDP example above.
@@ -419,58 +465,6 @@ Because iroh does not read the operating system's certificate store by default,
 your developers also need to point the application at the right authority. See
 [We inspect TLS traffic](#we-inspect-tls-traffic) for the code.
 
-### Controlling who can use your relay
-
-Firewall rules control which *machines* can reach the relay. The relay's own
-`access` setting controls which *devices* it will serve. The check happens after
-the relay has cryptographically verified the device's identity, so an entry on
-the allow list cannot be impersonated.
-
-```toml
-# Default: anyone who can reach it.
-access = "everyone"
-
-# Allow a fixed list of devices, identified by public key.
-access.allowlist = [
-  "523c7996bad77424cbdfd0f0f0b8b5d0d9f9c1b2a3e4f5061718293a4b5c6d7e",
-  "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
-]
-
-# Or block specific devices and allow the rest.
-access.denylist = ["..."]
-
-# Require a shared password. Can also be set with the
-# IROH_RELAY_ACCESS_TOKEN environment variable.
-access.shared_token = ["token-a", "token-b"]
-
-# Ask your own service for each device.
-access.http = { url = "https://inventory.internal.example.com/iroh-access", bearer_token = "..." }
-```
-
-| Option | Use when |
-|---|---|
-| `allowlist` | You have a small fixed set of devices and already track their identities |
-| `shared_token` | Devices come and go, and you want one password you can rotate |
-| `http` | You already run an inventory or device management system that can answer |
-| `denylist` | You need to remove specific devices from an otherwise open relay |
-
-The `http` option sends a `POST` to your service with the device's identity in
-an `X-Iroh-Endpoint-Id` header, and admits the device only if you reply `200`
-with a body of `true`.
-
-**For your developers.** A device presents the shared password like this:
-
-```rust
-use iroh::{Endpoint, RelayMap, RelayMode, RelayUrl, endpoint::presets};
-
-let relay: RelayUrl = "https://relay.internal.example.com".parse()?;
-let relay_map = RelayMap::from_iter([relay]).with_auth_token("token-a");
-
-let endpoint = Endpoint::builder(presets::Empty)
-    .relay_mode(RelayMode::Custom(relay_map))
-    .bind()
-    .await?;
-```
 
 ## Multiple offices and sites
 
@@ -510,56 +504,8 @@ while the link is down, and cross-site connections resume when it returns.
 
 ## Testing your configuration
 
-Run the diagnostic tool on a machine on the network you want to test. It needs
-[Rust](https://rustup.rs) installed, so you may prefer to ask your developers to
-run it and send you the output.
-
-```shell
-cargo install iroh-doctor
-iroh-doctor report
-```
-
-The output is long. These are the lines that matter:
-
-| Line | What it tells you |
-|---|---|
-| `udp` | `false` means UDP is blocked or filtered, and everything will relay. |
-| `ipv4` / `ipv6` | Which of the two reached a relay successfully. |
-| `mapping_varies_by_dest_ip` | `true` means your router type will prevent most direct connections, even with UDP allowed. |
-| `preferred_relay` | Which relay was chosen. If this is empty, no relay was reachable at all. Check TCP 443 and DNS first. |
-| `relay_latency` | Response time per relay. Missing entries are relays your firewall blocked. |
-| `captive_portal` | Anything other than empty means a captive portal or intercepting device is in the way. |
-
-For devices already deployed at customer sites or branch offices where you
-cannot run a command line tool, your developers can use
-[Network Diagnostics](/iroh-services/net-diagnostics/usage). It runs the same
-checks on demand from a web dashboard against any device that is online.
-
-## Checklist
-
-Firewall and DNS:
-
-- [ ] Allow outbound TCP 443 to the relay hostnames (required)
-- [ ] Allow outbound TCP 443 to `dns.iroh.link`, or plan to replace address lookup
-- [ ] Confirm your DNS filtering does not strip TXT records for `dns.iroh.link`
-- [ ] Allow outbound UDP 7842 to the relay hostnames (recommended)
-- [ ] Allow outbound UDP to any destination port (recommended)
-- [ ] Set your firewall's UDP idle timeout to 30 seconds or more
-- [ ] Turn off client isolation on wireless segments where devices should reach each other
-- [ ] Test with `iroh-doctor report` from inside the network
-
-Ask your developers to:
-
-- [ ] Tell you which relay hostnames the application is configured with, before
-      you write any of the rules above
-- [ ] Use the operating system certificate store if you inspect TLS traffic
-- [ ] Configure the proxy address if outbound traffic must be proxied
-- [ ] Disable automatic router port opening
-
-If you run your own relay:
-
-- [ ] Open inbound TCP 443, and UDP 7842 if address discovery is enabled
-- [ ] Bind the monitoring port to loopback, or disable it
-- [ ] Issue the certificate from your internal certificate authority
-- [ ] Set `access` to something other than `everyone`
-- [ ] Give every site the same relay list and password
+See [Diagnose a connectivity issue](/iroh-services/net-diagnostics/quickstart)
+for a script you can run from inside your network to confirm the application can
+reach the relays and that direct connections work. It is a quick way to check
+that your firewall rules are correct, and it produces a report you can send to
+your developers to see that everything is working.

@@ -131,6 +131,12 @@ Once two devices establish a direct connection, their traffic stops flowing
 through the relay, so this visibility covers the period before that plus any
 connection that never manages to go direct.
 
+A relay is also not told when a pair goes direct. From its point of view traffic
+simply stops, and it cannot distinguish a pair that is still talking over a direct
+path from one that finished and disconnected. So a relay cannot reliably infer how
+long two devices communicated or how much they exchanged in total, only what it
+carried itself.
+
 That connection metadata is a real disclosure, and it is a fair thing to care
 about. If it matters to you, run your own relay and it stays with you.
 
