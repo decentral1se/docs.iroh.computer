@@ -138,13 +138,6 @@ If your developers use the Iroh Services dashboard for monitoring or
 diagnostics, that traffic travels over the connections above and needs no extra
 firewall rules.
 
-### Security and privacy 
-
-The questions a security or network review raises, including what a relay can
-see, what actually leaves your network, and what running your own relay does and
-does not change, are answered in
-[Security & Privacy](/concepts/security-privacy#questions-from-security-reviews).
-
 ## Common situations
 
 ### We block outbound UDP
@@ -193,7 +186,7 @@ internal network policy, so desk-to-desk transfers can stay local even when
 outbound UDP is blocked.
 </Tip>
 
-**For your developers.** On a network where UDP is silently dropped, the
+On a network where UDP is silently dropped, the
 application can skip trying, which removes probe traffic that shows up in
 intrusion detection logs and speeds up startup:
 
@@ -374,55 +367,6 @@ involved. This requires your switches to forward multicast and client isolation
 to be off. Your developers will find the setup in
 [mDNS address lookup](/connecting/local-address-lookup).
 
-### Can we stop data going through a relay entirely?
-
-This request usually arrives as a policy statement: no company data may pass
-through a server we do not control. It is worth separating the two things that
-might mean, because they have different answers.
-
-**If the concern is that someone could read the data,** it is already addressed.
-A relay forwards encrypted bytes and cannot decrypt them. No relay operator can
-see inside your traffic.
-
-**If the concern is control, jurisdiction, or data residency,** the answer is to
-run the relay yourself, as described above. Your server, your network, your
-logs, and nothing leaves your perimeter.
-
-Switching relaying off entirely is a third option. It is a one-line change for
-your developers:
-
-```rust
-let endpoint = Endpoint::builder(presets::Empty)
-    .relay_mode(RelayMode::Disabled)
-    .bind()
-    .await?;
-```
-
-It is usually the wrong choice. It removes the fallback, but it also removes the
-machinery that makes direct connections work in the first place.
-
-- **Roughly one connection in ten stops working.** Stricter firewalls and
-  certain router types do not allow two devices to connect directly. Those
-  connections use a relay today. Without one they simply fail, with no fallback
-  and no error you can fix from the network side.
-- **You lose the introduction, not just the fallback.** The relay is how two
-  devices first find each other and coordinate the simultaneous connection
-  attempt. Without it, a device behind a firewall cannot be reached at all
-  unless you provide another way for peers to find each other.
-- **Connections take longer to start.** Normally the first data flows over the
-  relay immediately and moves to a direct connection a moment later. Without a
-  relay, nothing flows until the direct connection succeeds or fails.
-- **Network changes turn into outages.** Switching from Wi-Fi to a mobile
-  connection, or a DHCP lease change, breaks the direct path. The relay normally
-  carries traffic during the seconds it takes to rebuild one.
-
-The cost also falls unevenly. It lands on whoever is behind the most restrictive
-network, which is often a customer or a remote worker rather than someone you
-can help.
-
-For nearly every deployment, running your own relay is the better answer. You
-get the control you were after, and your users keep the connectivity.
-
 ## Running your own relay
 
 ### Firewall rules for the relay server
@@ -509,3 +453,10 @@ for a script you can run from inside your network to confirm the application can
 reach the relays and that direct connections work. It is a quick way to check
 that your firewall rules are correct, and it produces a report you can send to
 your developers to see that everything is working.
+
+## Security and privacy 
+
+The questions a security or network review raises, including what a relay can
+see, what actually leaves your network, and what running your own relay does and
+does not change, are answered in
+[Security & Privacy](/concepts/security-privacy#questions-from-security-reviews).
