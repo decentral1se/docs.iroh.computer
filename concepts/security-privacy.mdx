@@ -149,8 +149,9 @@ connection metadata, but not the contents.
 
 Four things:
 
-1. An encrypted connection to the relay servers the application is configured
-   with.
+1. Encrypted connections to relay servers: the ones your application is
+   configured with, plus the relay that any device you connect to has chosen for
+   itself.
 2. A small signed record published to `dns.iroh.link`, containing the device's
    public key and which relay it is using. **Internal IP addresses are not
    published by default.** iroh deliberately filters them out to avoid leaking
