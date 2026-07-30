@@ -35,7 +35,7 @@ Relays serve two roles: they assist with [NAT Traversal](/concepts/nat-traversal
 
 Because relays are **stateless** (they route encrypted packets but store nothing), they're cheap to run and easy to scale. There's no database to sync, no state to migrate, and automatic failover across relay instances is built in.
 
-By default iroh is configured with four public relay servers run by number 0 (two in the US, one in Europe, and one in Asia), free to use for development and testing. To prevent abuse, throughput through public relays is rate-limited. For production workloads, you can run a [dedicated relay](/concepts/relays#dedicated-relays) or [self-host your own](/concepts/relays#deploy-your-own-relay).
+By default iroh is configured with several public rate-limited relay servers run by number 0 (two in the US, one in Europe, and one in Asia), free to use for development and testing. To prevent abuse, throughput through public relays is rate-limited. For production workloads, you can run a [dedicated relay](/concepts/relays#dedicated-relays) or [self-host your own](/concepts/relays#deploy-your-own-relay).
 
 
 ## Can relays read the traffic they route?
@@ -45,6 +45,8 @@ We use QUIC which is based on TLS 1.3.
 From the perspective of our QUIC implementation, the relay is "just another UDP socket" for sending encrypted packets around.
 Because the relays are relaying traffic, they theoretically know that Endpoint ID X talks to Endpoint ID Y and how many bytes are sent this way, but only for as long as these endpoints haven't established a direct connection yet.
 However, we don't record this data on our relays.
+
+If you're answering this question for a security review rather than for yourself, [Enterprise Networks](/concepts/security-privacy#questions-from-security-reviews) covers it alongside what a relay can see, what leaves your network, and what running your own relay does and doesn't change.
 
 
 ## How secure is iroh's end-to-end encryption?
@@ -67,6 +69,8 @@ The easiest path is a [dedicated relay via Iroh Services](/concepts/relays#dedic
 
 Running your own relay doesn't affect interoperability. Your endpoints can still connect to peers using other relay servers, and since relays are stateless and logic lives at the client, can be swapped independently.
 
+For firewall rules, certificates, and access control on a relay you host yourself, see [Running your own relay](/configuring-networks#running-your-own-relay).
+
 
 ## What are the risks of running a public relay?
 
@@ -85,7 +89,7 @@ If you're in a local network together you can enable [local network address look
 ## How can I control which relay servers iroh connects to?
 
 Iroh will only talk to relay servers that it knows URLs for.
-By default iroh is configured with 3 relay servers from the [default `RelayMap`](https://docs.rs/iroh/latest/iroh/defaults/prod/index.html).
+By default iroh is configured with several public rate-limited relay servers from the [default `RelayMap`](https://docs.rs/iroh/latest/iroh/defaults/prod/index.html).
 If your endpoint has address lookup services configured (which is
 the default with the `N0` preset), then iroh might connect to 
 relay servers discovered that way.
@@ -108,6 +112,8 @@ This returns an `impl Watchable<Value = bool>` that reflects whether the endpoin
 
 Iroh gives you full control over which endpoints are allowed to connect via [endpoint hooks](/connecting/endpoint-hooks). Hooks let you intercept incoming connections before they're accepted, so you can allow or reject them based on the connecting endpoint's ID, your own allowlist/denylist logic, or any application-specific policy.
 
+That controls who your application accepts. If you run your own relay, you can separately control which endpoints the relay itself will carry traffic for, by endpoint ID, a shared token, or a callback to your own service. See [Controlling who can use your relay](/configuring-networks#controlling-who-can-use-your-relay).
+
 
 ## What is "Address Lookup" in iroh and which one should I enable?
 
@@ -128,13 +134,24 @@ First, peer-to-peer [address lookup over the Mainline DHT](/connecting/dht-addre
 When you do a P2P address lookup, any Mainline server node could respond: each [BEP 44](https://www.bittorrent.org/beps/bep_0044.html) record is stored on 20 random Mainline nodes. So yes, a BitTorrent client that participates in the DHT as a server and has been running long enough to be in the routing tables will respond.
 
 
+## Our IT or security team needs to approve iroh. What do they need?
+
+Iroh operates on open standards: HTTPS on TCP 443, QUIC HTTP/3, mTLS, and industry grade end to end encryption with elliptic curve keys. Nothing listens for inbound connections, no ports are forwarded, and all traffic is end-to-end encrypted whether it goes direct or through a relay. Allowing outbound UDP is optional, but it is what lets most connections go direct.
+
+[Enterprise Networks](/configuring-networks) is written for that reader rather than for a developer: what iroh does on a managed network, what to allow, the security and privacy questions that come up in review, and how to run every part of it on infrastructure you control.
+
+
 ## What ports does iroh use?
 
-Iroh listens on **Two UDP ports**: one for IPv4 and one for IPv6, used for direct P2P connections; configurable via [`endpoint::Builder`](https://docs.rs/iroh/latest/iroh/endpoint/struct.Builder.html)
+**Outbound TCP 443** to your relay servers. This is the only connection iroh strictly requires, and it's an HTTPS connection that upgrades to a WebSocket.
+
+**Outbound UDP** for direct connections. Iroh binds **two UDP ports**, one for IPv4 and one for IPv6, assigned by the operating system unless you set them via [`endpoint::Builder`](https://docs.rs/iroh/latest/iroh/endpoint/struct.Builder.html). Direct connections go to arbitrary destination ports on the far side, and **UDP 7842** on the relay is used to learn your own public address.
 
 Iroh will work behind firewalls that only allow TCP outbound, but direct connections won't be possible in that case; all traffic will fall back to the relay.
 
 It's totally possible that you maintain connections to multiple relays at a time, if you're connected to iroh endpoints that have another home relay than yours. Each of these connections will use another TCP socket.
+
+For the full list of flows, hostnames, and firewall rules to hand to a network administrator, see [Enterprise Networks](/configuring-networks).
 
 
 ## How would onion-routing work with iroh?
@@ -255,3 +272,80 @@ It would also mean Endpoint IDs would be exactly 37x as big.
 To support post-quantum-cryptography, we would need to trade off usability with the risk should a sufficiently powerful quantum computers would become real.
 We believe it is much more important to serve existing use cases efficiently, so they have encryption *today*.
 We fully believe the work on post-quantum-cryptography is good and important and follow developments closely.
+
+## Does this punch holes in my firewall?
+
+No. The technique has an alarming name, so it is worth being precise about what
+actually happens.
+
+Two devices, each behind its own firewall, send an outbound packet to each other
+at roughly the same moment. Each firewall sees an outbound connection from a
+device on its own network and allows the reply, under the same rule that lets a
+browser load a website. Neither firewall is tricked, and neither is
+reconfigured.
+
+In practical terms:
+
+- iroh never accepts unsolicited inbound connections. No port is exposed to the
+  internet.
+- Every connection begins as outbound traffic from a device you control.
+- If your firewall does not allow the reply, nothing is bypassed. The connection
+  falls back to the relay.
+- If you block the relay hostnames too, iroh stops working. That is the intended
+  behavior, not something to defend against.
+
+One caveat on that last point. Blocking the hostnames listed below stops iroh in
+its default configuration, which is what almost every application uses. But the
+hostnames are a setting in the application, and iroh also supports other ways of
+finding peers that your developers could enable. If you need a hard guarantee
+rather than a sensible default, block outbound UDP as well, and ask your
+developers to confirm what the application is actually configured with.
+
+## Can we stop data going through a relay entirely?
+
+This request usually arrives as a policy statement: no company data may pass
+through a server we do not control. It is worth separating the two things that
+might mean, because they have different answers.
+
+**If the concern is that someone could read the data,** it is already addressed.
+A relay forwards encrypted bytes and cannot decrypt them. No relay operator can
+see inside your traffic.
+
+**If the concern is control, jurisdiction, or data residency,** the answer is to
+run the relay yourself, as described above. Your server, your network, your
+logs, and nothing leaves your perimeter.
+
+Switching relaying off entirely is a third option. It is a one-line change for
+your developers:
+
+```rust
+let endpoint = Endpoint::builder(presets::Empty)
+    .relay_mode(RelayMode::Disabled)
+    .bind()
+    .await?;
+```
+
+It is usually the wrong choice. It removes the fallback, but it also removes the
+machinery that makes direct connections work in the first place.
+
+- **Roughly one connection in ten stops working.** Stricter firewalls and
+  certain router types do not allow two devices to connect directly. Those
+  connections use a relay today. Without one they simply fail, with no fallback
+  and no error you can fix from the network side.
+- **You lose the introduction, not just the fallback.** The relay is how two
+  devices first find each other and coordinate the simultaneous connection
+  attempt. Without it, a device behind a firewall cannot be reached at all
+  unless you provide another way for peers to find each other.
+- **Connections take longer to start.** Normally the first data flows over the
+  relay immediately and moves to a direct connection a moment later. Without a
+  relay, nothing flows until the direct connection succeeds or fails.
+- **Network changes turn into outages.** Switching from Wi-Fi to a mobile
+  connection, or a DHCP lease change, breaks the direct path. The relay normally
+  carries traffic during the seconds it takes to rebuild one.
+
+The cost also falls unevenly. It lands on whoever is behind the most restrictive
+network, which is often a customer or a remote worker rather than someone you
+can help.
+
+For nearly every deployment, running your own relay is the better answer. You
+get the control you were after, and your users keep the connectivity.
