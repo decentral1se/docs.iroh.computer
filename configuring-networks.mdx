@@ -15,7 +15,7 @@ control.
   no port to forward, and no static IP to assign. Devices do listen on the UDP
   sockets they bind, and by default iroh asks your gateway for an external port
   over UPnP or NAT-PMP, which you can switch off. See
-  [Automatic port opening](#automatic-port-opening).
+  [Automatic port opening](#if-automatic-port-opening-is-enabled).
 - **Allowing outbound UDP is optional, but recommended.** It makes connections faster and
   cheaper, by being direct, but iroh works without it.
 - **You can run all of the infrastructure yourself** if you do not want traffic
@@ -35,7 +35,7 @@ Firewall and DNS:
 -  Confirm your DNS filtering does not strip TXT records for `dns.iroh.link`
 -  Allow outbound UDP 7842 to the relay hostnames 
 -  Allow outbound UDP to any destination port. A narrowed range will not work;
-   see [We allowlisted a range of UDP ports](#we-allowlisted-a-range-of-udp-ports-and-it-still-failed)
+   see [why a narrowed range fails](#if-you-allowlisted-a-range-of-udp-ports-and-iroh-still-failed)
 -  Set your firewall's UDP idle timeout to 30 seconds or more
 -  Turn off client isolation on wireless segments where devices should reach each other
 -  Test with `iroh-doctor report` from inside the network
@@ -131,13 +131,14 @@ euc1-1.relay.n0.iroh.link
 aps1-1.relay.n0.iroh.link
 ```
 
-Separately from the relays, allow `dns.iroh.link`. That one is used no matter
-which relays the application points at, unless your developers have replaced
+**DNS Service.** The application publishes its address to `dns.iroh.link`, which
+is a shared service run by n0. It is used no matter which relays the
+application points at, unless your developers have replaced
 address lookup with something you run.
 
-If your developers use the Iroh Services dashboard for monitoring or
-diagnostics, that traffic travels over the connections above and needs no extra
-firewall rules.
+If your developers use the [Iroh Services dashboard for monitoring or
+diagnostics](https://services.iroh.computer), that traffic travels over the
+connections above and needs no extra firewall rules.
 
 ## Common situations
 
@@ -168,7 +169,7 @@ Why allowing it is usually reasonable:
 - **It is outbound-first.** You write no inbound rule, because the packets coming
   back arrive on a flow your firewall already allowed out. The one exception is
   automatic port opening, which is
-  [separately controllable](#automatic-port-opening).
+  [separately controllable](#if-automatic-port-opening-is-enabled).
 - **Idle entries clear quickly.** iroh sends a keepalive while a connection is
 active and gives up on an idle path after a specified timeout. A UDP idle
 timeout of 30 seconds or more on your firewall is recommended.
