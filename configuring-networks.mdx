@@ -400,11 +400,12 @@ mapping probe.
 **For your developers:** `.portmapper_config(PortmapperConfig::Disabled)` on the
 endpoint builder, as in the UDP example above.
 
-## Keeping traffic inside your network
+## Airgapped networks
 
-If you would rather no iroh traffic left your network at all, you can replace
-every piece of infrastructure outside it with your own. This is the right answer
-to most concerns about relays, third-party servers, and data residency.
+If no iroh traffic may leave your network, you can replace every piece of
+infrastructure outside it with your own, up to and including running fully
+airgapped with no internet connection at all. This is the right answer to most
+concerns about relays, third-party servers, and data residency.
 
 There are three pieces, and you can replace them independently.
 
@@ -441,7 +442,7 @@ let endpoint = Endpoint::builder(presets::Empty)
     .await?;
 ```
 
-For an isolated network with no internet access at all, devices can find each
+**Fully airgapped.** With no internet connection at all, devices can find each
 other by multicast on the local network and connect directly, with no relay
 involved. This requires your switches to forward multicast and client isolation
 to be off. Your developers will find the setup in
