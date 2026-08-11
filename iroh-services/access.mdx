@@ -51,15 +51,43 @@ let client = preset.client_builder(&endpoint).build().await?;
 
 The preset carries the key, so you don't pass it to the client a second time.
 
-In production, load the key from a config file or environment variable instead
-of hardcoding it.
+The literal string above is for illustration. Load the key from an environment
+variable or a secret manager instead, using `api_secret_from_env()` to read
+`IROH_SERVICES_API_SECRET`.
 
 For a full walkthrough (creating an endpoint, naming it, and verifying it on the
 dashboard) see the [Iroh Services quickstart](/iroh-services/quickstart).
 
+## An API key is a project-wide secret
+
+An API key is a long-lived shared secret that carries the authority of your
+whole project. It has no per-endpoint identity and no scopes: **any** process
+holding it can push metrics, send diagnostics reports, and connect to your
+dedicated relays as you. It's a bearer credential; whoever has the bytes has the
+access.
+
+API keys are a building block for your own authentication system, not a
+replacement for one. If your app runs on machines you don't control, you decide
+who gets access, and the key stays on your side.
+
+**Keep the key on endpoints you operate.** If you can control the machine's disk and process environment, and whether you can rotate
+the key on it without shipping a new release. If both are yes, the key is recoverable.
+
+On an enterprise deployment where machines are enrolled in an MDM, the key is delivered as a managed
+configuration or platform secret rather than compiled into the app, and you can
+rotate or revoke it across the fleet from the console. Those endpoints are
+infrastructure you operate in every sense that matters here, so metrics, net
+diagnostics, and authenticated dedicated relays all work as intended.
+
+What doesn't work so well is a consumer application on a device you don't administer. In those cases, you'll need to build your own authentication layer that allows you to control authentication with your own token, service, or otherwise. On it's own, iroh is not opinionated about authentication so you can use whatever system you want, forever.
+
 ## What's next
 
-Today, API keys gate metrics and net diagnostics uploads and access to your
-dedicated relays. Future versions may support per-resource permissions and
-time-based access control. If your use case needs that today, [contact
-us](https://n0.computer/contact).
+We're working on per-endpoint access issued through your own application server:
+your backend authenticates a user, then hands that user's endpoint a credential
+carrying the scopes you chose for it, without your API key ever touching the
+device. **This is not implemented yet.** Until it ships, the patterns above are
+the way to do it, and the work of deciding who gets what is yours.
+
+If your use case needs this, [contact us](https://n0.computer/contact) — we want
+to hear about the shape of it.

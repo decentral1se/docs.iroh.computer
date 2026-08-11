@@ -113,6 +113,32 @@ Iroh gives you full control over which endpoints are allowed to connect via [end
 That controls who your application accepts. If you run your own relay, you can separately control which endpoints the relay itself will carry traffic for, by endpoint ID, a shared token, or a callback to your own service. That is configured on the relay itself; see the [relay documentation](https://github.com/n0-computer/iroh/tree/main/iroh-relay).
 
 
+## How do I use Iroh Services in an app I ship to users? I can't put my API key on their devices.
+
+You're right that you can't, and the good news is that you don't have to: **iroh
+connections never require an API key.** Two endpoints connecting to each other
+and NAT traversal work with no credentials at all. An
+[API key](/iroh-services/access) is only needed for pushing metrics to your
+project, sending net diagnostics reports, and connecting to an authenticated
+[relay](/concepts/relays#authentication).
+
+Your instinct about shipping it is correct. An API key is a long-lived,
+project-wide bearer secret with no scopes, so a copy extracted from your binary
+grants access to send metrics and connect to your relays until you rotate it.
+
+- **Enterprise deployments can use API keys out of the box.* If you control who can read the machine and whether you can rotate the key without shipping a new
+  release, then you are ok. Run this on an MDM-managed fleet, in servers, or in CI, where
+  the key arrives as a managed configuration and can be revoked from a console.
+- **For consumer apps, we recommend adding an authentication layer.** Build an authentication layer to decide who may connect based on the endpoint's ID,
+  with an allowlist your backend maintains, a token your app issues, or any policy you
+  like. You control per-user authorization living in your code, on your servers -- iroh is unopinionated about this.
+
+We are unhappy with this story currently so we are building per-endpoint access issued by your own application server, where
+your backend authenticates a user and hands their endpoint a scoped credential
+without the API key ever reaching the device. It isn't implemented yet, so for
+now that layer is yours to build until that feature ships.
+
+
 ## What is "Address Lookup" in iroh and which one should I enable?
 
 For most usage, using the services that are enabled with the `iroh::endpoint::presets::N0` preset is the best default.
