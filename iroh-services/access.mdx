@@ -60,66 +60,26 @@ dashboard) see the [Iroh Services quickstart](/iroh-services/quickstart).
 
 ## An API key is a project-wide secret
 
-This is the most important thing to understand about API keys, and the place
-people most often get it wrong.
-
 An API key is a long-lived shared secret that carries the authority of your
 whole project. It has no per-endpoint identity and no scopes: **any** process
 holding it can push metrics, send diagnostics reports, and connect to your
 dedicated relays as you. It's a bearer credential; whoever has the bytes has the
 access.
 
-That is fine wherever you control the machine and can load the key from the
-environment or a secret manager, out of reach of anyone else.
-
-It is **not** safe to ship inside an application that runs on someone else's
-device. A key compiled into a binary, bundled into a mobile app, or dropped into
-a desktop installer is extractable. `strings` on the binary, a decompiled APK, or
-a proxy on the device will all find it, and obfuscation only changes how long
-that takes. Once it's out, it works from anywhere until you rotate it — and
-rotating it breaks every copy of your app that's already installed.
-
-<Note>
-The [token minting](/concepts/relays#authentication) that happens when your
-endpoint connects to a dedicated relay does not change this. The token is
-short-lived and scoped to that endpoint, but it is minted *locally from the API
-key*, so the key still has to be present on the machine. It protects the key in
-transit, not on disk.
-</Note>
-
-## What to do instead
-
 API keys are a building block for your own authentication system, not a
 replacement for one. If your app runs on machines you don't control, you decide
 who gets access, and the key stays on your side.
 
-**Keep the key on endpoints you operate.** The test is whether you control who
-can read the machine's disk and process environment, and whether you can rotate
-the key on it without shipping a new release. If both are yes, the key belongs
-there.
+**Keep the key on endpoints you operate.** If you can control the machine's disk and process environment, and whether you can rotate
+the key on it without shipping a new release. If both are yes, the key is recoverable.
 
-That covers the backend services in your own architecture — the endpoint that
-receives uploads, the coordinator your clients dial, the worker that syncs
-between regions — and it also covers managed device fleets. On an enterprise
-deployment where machines are enrolled in MDM, the key is delivered as a managed
+On an enterprise deployment where machines are enrolled in an MDM, the key is delivered as a managed
 configuration or platform secret rather than compiled into the app, and you can
 rotate or revoke it across the fleet from the console. Those endpoints are
 infrastructure you operate in every sense that matters here, so metrics, net
 diagnostics, and authenticated dedicated relays all work as intended.
 
-What's left over is a consumer application on a device you don't administer.
-There the key has nowhere safe to live, so it doesn't go there at all: those
-endpoints run with no key and connect to your services and to each other
-normally, because iroh connections themselves never require one.
-
-**Add your own authorization layer with endpoint hooks.** Deciding which users
-may do what is your application's job, and [endpoint
-hooks](/connecting/endpoint-hooks) are where that decision goes. A hook
-intercepts an incoming connection before it's accepted, so you can allow or
-reject it based on the connecting endpoint's ID, an allowlist your backend
-maintains, a token your app issues, or any policy you like. That gives you
-per-user access control that lives in your code, backed by your own
-authentication, with the API key never leaving your infrastructure.
+What doesn't work so well is a consumer application on a device you don't administer. In those cases, you'll need to build your own authentication layer that allows you to control authentication with your own token, service, or otherwise. On it's own, iroh is not opinionated about authentication so you can use whatever system you want, forever.
 
 ## What's next
 
