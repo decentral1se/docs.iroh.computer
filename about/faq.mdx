@@ -120,32 +120,23 @@ connections never require an API key.** Two endpoints connecting to each other
 and NAT traversal work with no credentials at all. An
 [API key](/iroh-services/access) is only needed for pushing metrics to your
 project, sending net diagnostics reports, and connecting to an authenticated
-[dedicated relay](/iroh-services/relays/managed).
+[relay](/concepts/relays#authentication).
 
 Your instinct about shipping it is correct. An API key is a long-lived,
 project-wide bearer secret with no scopes, so a copy extracted from your binary
-grants full access to your project until you rotate it.
+grants access to send metrics and connect to your relays until you rotate it.
 
-So split it in two:
+- **Enterprise deployments can use API keys out of the box.* If you control who can read the machine and whether you can rotate the key without shipping a new
+  release, then you are ok. Run this on an MDM-managed fleet, in servers, or in CI, where
+  the key arrives as a managed configuration and can be revoked from a console.
+- **For consumer apps, we recommend adding an authentication layer.** Build an authentication layer to decide who may connect based on the endpoint's ID,
+  with an allowlist your backend maintains, a token your app issues, or any policy you
+  like. You control per-user authorization living in your code, on your servers -- iroh is unopinionated about this.
 
-- **The key stays on endpoints you operate.** The test is whether you control who
-  can read the machine and whether you can rotate the key without shipping a new
-  release. Your own backend services pass it, and so do MDM-managed fleets, where
-  the key arrives as a managed configuration and can be revoked from the console —
-  which makes enterprise deployments a good fit for the full feature set. Client
-  endpoints on devices you don't administer run with no key and connect normally.
-- **Access control for your users is a layer you add**, using [endpoint
-  hooks](/connecting/endpoint-hooks). A hook intercepts an incoming connection
-  before it's accepted, so you decide who may connect based on the endpoint's ID,
-  an allowlist your backend maintains, a token your app issues, or any policy you
-  like. That's per-user authorization living in your code, backed by your own
-  authentication.
-
-We're building per-endpoint access issued by your own application server, where
+We are unhappy with this story currently so we are building per-endpoint access issued by your own application server, where
 your backend authenticates a user and hands their endpoint a scoped credential
 without the API key ever reaching the device. It isn't implemented yet, so for
-now that layer is yours to build. See [API Keys](/iroh-services/access) for the
-full picture.
+now that layer is yours to build until that feature ships.
 
 
 ## What is "Address Lookup" in iroh and which one should I enable?
