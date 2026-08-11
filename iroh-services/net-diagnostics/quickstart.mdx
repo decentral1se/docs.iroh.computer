@@ -73,30 +73,36 @@ cargo add iroh-services
 
 Build an `iroh_services::Client`, grant iroh services the
 `NetDiagnosticsCap::GetAny` capability so it can request diagnostics, and run a
-`ClientHost` so it can dial back into your endpoint. The client reads the API
-key you exported in step 1:
+`ClientHost` so it can dial back into your endpoint.
+
+At startup, build a preset from the API key you exported in step 1 and bind your
+endpoint with it:
+
+```rust
+let preset = iroh_services::preset().api_secret_from_env()?.build()?;
+let endpoint = Endpoint::bind(preset.clone()).await?;
+```
+
+Then pass that preset alongside the endpoint. Its `client_builder` hands the API
+key to the client, so you don't supply it twice:
 
 ```rust
 use anyhow::Result;
 use iroh::{Endpoint, protocol::Router};
 use iroh_services::{
-    ApiSecret, Client, ClientHost, CLIENT_HOST_ALPN, API_SECRET_ENV_VAR_NAME,
-    caps::NetDiagnosticsCap,
+    ClientHost, CLIENT_HOST_ALPN, IrohServicesPreset, caps::NetDiagnosticsCap,
 };
 
-async fn setup_net_diagnostics(endpoint: &Endpoint) -> Result<Router> {
-    // Get your secret somehow, either from an environment variable or config file
-    let secret = ApiSecret::from_env_var(API_SECRET_ENV_VAR_NAME)?;
-
+async fn setup_net_diagnostics(
+    preset: &IrohServicesPreset,
+    endpoint: &Endpoint,
+) -> Result<Router> {
     // The remote_id is the id of the endpoint we'll be sending the network
-    // report to, derived from the secret's address
-    let remote_id = secret.addr().id;
+    // report to, derived from the API key's address
+    let remote_id = preset.api_secret().addr().id;
 
     // Build the client
-    let client = Client::builder(endpoint)
-        .api_secret(secret)?
-        .build()
-        .await?;
+    let client = preset.client_builder(endpoint).build().await?;
 
     // Grant the GetAny capability so the platform can request diagnostics
     // from this endpoint on demand

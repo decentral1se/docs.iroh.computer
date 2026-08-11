@@ -16,20 +16,26 @@ Then, in your code, create a client and connect your endpoint to Iroh Services. 
 <CodeGroup>
 
 ```rust Rust
-use iroh::{Endpoint, endpoint::presets};
-use iroh_services::Client;
+use iroh::Endpoint;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Create an iroh endpoint
-    let endpoint = Endpoint::bind(presets::N0).await?;
+    // Build a preset from your API key. In production, load the key from a
+    // config file or environment variable instead of hardcoding it.
+    let preset = iroh_services::preset()
+        .api_secret_from_str("YOUR_API_KEY")?
+        .build()?;
+
+    // Create an iroh endpoint with the preset
+    let endpoint = Endpoint::bind(preset.clone()).await?;
 
     // Wait for the endpoint to be online
     endpoint.online().await;
 
-    // Create the Iroh Services client with your API key.
-    let client = Client::builder(&endpoint)
-        .api_secret_from_str("YOUR_API_KEY")?
+    // Create the Iroh Services client. `client_builder` reuses the preset's
+    // API key, which also carries the address of the service to dial.
+    let client = preset
+        .client_builder(&endpoint)
         .name("my-endpoint")?
         .build()
         .await?;

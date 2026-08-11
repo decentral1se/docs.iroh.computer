@@ -35,23 +35,52 @@ successfully, we will report the metric to the Iroh Services platform.
 
 For a complete example, see the [iroh-ping example on GitHub](https://github.com/n0-computer/iroh-ping).
 
+Custom metrics live in a struct that derives `MetricsGroup` from the
+`iroh-metrics` crate, which you register on the client:
+
+```bash
+cargo add iroh-metrics
+```
+
 ```rust
-use iroh::{Endpoint, endpoint::presets};
-use iroh_services::Client;
+use std::sync::Arc;
+
+use iroh::Endpoint;
+use iroh_metrics::{Counter, MetricsGroup};
+
+/// Metrics for our docs protocol.
+#[derive(Debug, Default, MetricsGroup)]
+#[metrics(name = "docs")]
+struct DocsMetrics {
+    /// Documents written successfully
+    documents_written: Counter,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let endpoint = Endpoint::bind(presets::N0).await?;
-    endpoint.online().await;
-    
-    let client = Client::builder(&endpoint)
+    let preset = iroh_services::preset()
         .api_secret_from_str("YOUR_API_KEY")?
+        .build()?;
+
+    let endpoint = Endpoint::bind(preset.clone()).await?;
+    endpoint.online().await;
+
+    // Register the group with the client. It ships alongside the built-in
+    // endpoint metrics on the client's reporting interval.
+    let metrics = Arc::new(DocsMetrics::default());
+    let client = preset
+        .client_builder(&endpoint)
+        .register_metrics_group(metrics.clone())
         .build()
         .await?;
-    
-    // Report a custom metric
-    client.metric("document_written", 1).await?;
-    
+
+    // Each time a document is written, bump the counter
+    metrics.documents_written.inc();
+
     Ok(())
 }
 ```
+
+The doc comment on each field becomes its help text, and `#[metrics(name = ...)]`
+names the group. Call `client.push_metrics()` if you need a dump sent
+immediately rather than waiting for the next interval.
