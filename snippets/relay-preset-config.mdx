@@ -1,21 +1,12 @@
-Your dedicated relays require authentication. Your endpoint authenticates to
-them with your project's API key: the iroh-services preset mints a short-lived
-access token scoped to your endpoint's key and to relay use only, then
-configures the endpoint to use your relays.
-
-In Rust, add the `iroh-services` crate to your project:
-
-```bash
-cargo add iroh-services
-```
-
-The Python, Swift, Kotlin, and JavaScript bindings ship the preset as part of
-`iroh-ffi`, with no extra dependency needed.
+Your endpoint authenticates to your relays using (optionally) an API key. The iroh-services
+preset mints a short-lived access token scoped to your endpoint's key and to
+relay use only, then configures the endpoint to use your relays.
 
 <CodeGroup>
 
 ```rust Rust
 use iroh::Endpoint;
+use iroh_services;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
