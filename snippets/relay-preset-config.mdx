@@ -105,6 +105,10 @@ presetIrohServices(builder, {
   apiSecret: 'YOUR_API_KEY',
 })
 
+// In JavaScript, presets are functions applied to an `EndpointBuilder`, so use
+// `Endpoint.builder()` rather than `Endpoint.bind()` — `bind()` always applies the
+// n0 preset.
+
 // Bind the endpoint, then wait until it's online to confirm it has an
 // authorized connection to a relay.
 const ep = await builder.bind()
@@ -113,12 +117,4 @@ await ep.online()
 
 </CodeGroup>
 
-In JavaScript, presets are functions applied to an `EndpointBuilder`, so use
-`Endpoint.builder()` rather than `Endpoint.bind()` — `bind()` always applies the
-n0 preset.
-
-<Note>
-  Custom relay URLs are available on Pro and Enterprise projects, or if you self-host your own relay.
-</Note>
-
-On a free project, omit the relay URLs — the preset then authenticates against the n0 public relays.
+On a free project, omit the relay URLs. Then, the preset will use the n0 public relays instead.
