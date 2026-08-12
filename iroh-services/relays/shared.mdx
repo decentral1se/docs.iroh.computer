@@ -1,0 +1,45 @@
+---
+title: "Shared Relays"
+description: "Multi-tenant relays with authentication, higher rate limits, and predictable performance"
+---
+
+import RelayPresetConfig from '/snippets/relay-preset-config.mdx';
+
+Shared relays are multi-tenant relays run by n0.computer on infrastructure that is separate from the [public relays](/iroh-services/relays/public). They sit between the free public relays and fully [managed relays](/iroh-services/relays/managed): you share a box with a small number of other tenants instead of the entire internet.
+
+## Why not the public relays
+
+The public relays are rate-limited based on total traffic across every iroh user on them. When traffic is high or bursty, your application shares those limits with everyone else.
+
+Shared relays:
+
+- Run on separate infrastructure from the public relays, so they aren't affected by bursty traffic or DDoS attacks against them
+- Have far fewer tenants per machine
+- Have higher rate limits than the public relays
+- Optional API key authentication, so only your applications can connect
+- Provide more predictable performance
+
+## What you get
+
+For **$19/month**:
+
+- Four relays across the globe
+- 10,000 endpoints included, then $0.0003 per endpoint
+- Higher rate limits than the public relays, for better performance
+- API key authentication, so you can revoke access for endpoints as needed
+
+Metrics are already included with the Pro plan: throughput, direct connection rates, relay usage, and rate limits. See [Metrics](/iroh-services/metrics/index).
+
+## Free trial
+
+You can try shared relays free for 30 days. We won't charge you until the following month, and you can cancel anytime.
+
+## Configure your endpoint
+
+Point your endpoints at your shared relays.
+
+<RelayPresetConfig />
+
+## Shared vs. Dedicated
+
+Shared relays give you authentication, isolation from public traffic, and higher rate limits at a low fixed price. Choose [dedicated relays](/iroh-services/relays/managed) when you need single-tenant isolation, version locking, blue/green deployments, custom regions, or an uptime SLA.
